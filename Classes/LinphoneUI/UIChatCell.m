@@ -1,20 +1,20 @@
-/* UIChatCell.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "UIChatCell.h"
@@ -37,6 +37,7 @@
 		[self setFrame:CGRectMake(0, 0, sub.frame.size.width, sub.frame.size.height)];
 		[self addSubview:sub];
 	}
+	[_imdmIcon setHidden:TRUE];
 	return self;
 }
 
@@ -63,26 +64,89 @@
 		LOGW(@"Cannot update chat cell: null chat");
 		return;
 	}
-	const LinphoneAddress *addr = linphone_chat_room_get_peer_address(chatRoom);
-	[ContactDisplay setDisplayNameLabel:_addressLabel forAddress:addr];
-	[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:YES] bordered:NO withRoundedRadius:YES];
 
-	LinphoneChatMessage *last_message = linphone_chat_room_get_user_data(chatRoom);
-	if (last_message) {
-		NSString *message = [UIChatBubbleTextCell TextMessageForChat:last_message];
-		// shorten long messages
-		if ([message length] > 50) {
-			message = [[message substringToIndex:50] stringByAppendingString:@"[...]"];
+	LinphoneChatRoomCapabilitiesMask capabilities = linphone_chat_room_get_capabilities(chatRoom);
+	if (capabilities & LinphoneChatRoomCapabilitiesOneToOne) {
+		bctbx_list_t *participants = linphone_chat_room_get_participants(chatRoom);
+		LinphoneParticipant *firstParticipant = participants ? (LinphoneParticipant *)participants->data : NULL;
+		const LinphoneAddress *addr = firstParticipant ? linphone_participant_get_address(firstParticipant) : linphone_chat_room_get_peer_address(chatRoom);
+		if (addr) {
+			[ContactDisplay setDisplayNameLabel:_addressLabel forAddress:addr];
+			[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:NO withRoundedRadius:YES];
+		} else {
+			_addressLabel.text = [NSString stringWithUTF8String:LINPHONE_DUMMY_SUBJECT];
 		}
-		_chatContentLabel.text = message;
-		_chatLatestTimeLabel.text =
-			[LinphoneUtils timeToString:linphone_chat_message_get_time(last_message) withFormat:LinphoneDateChatList];
-		_chatLatestTimeLabel.hidden = NO;
 	} else {
-		_chatContentLabel.text = nil;
-		_chatLatestTimeLabel.text = NSLocalizedString(@"Now", nil);
+		const char *subject = linphone_chat_room_get_subject(chatRoom);
+		_addressLabel.text = [NSString stringWithUTF8String:subject ?: LINPHONE_DUMMY_SUBJECT];
+		[_avatarImage setImage:[UIImage imageNamed:@"chat_group_avatar.png"] bordered:NO withRoundedRadius:YES];
 	}
+    // TODO update security image when security level changed
+    [_securityImage setImage:[FastAddressBook imageForSecurityLevel:linphone_chat_room_get_security_level(chatRoom)]];
 
+	_chatLatestTimeLabel.text = [LinphoneUtils timeToString:linphone_chat_room_get_last_update_time(chatRoom) withFormat:LinphoneDateChatList];
+
+	LinphoneChatMessage *last_msg = linphone_chat_room_get_last_message_in_history(chatRoom);
+	if (last_msg) {
+        BOOL imdnInSnap = FALSE;
+        if (imdnInSnap) {
+            BOOL outgoing = linphone_chat_message_is_outgoing(last_msg);
+            NSString *text = [UIChatBubbleTextCell TextMessageForChat:last_msg];
+            if (outgoing) {
+                // shorten long messages
+                /*if ([text length] > 50)
+                    text = [[text substringToIndex:50] stringByAppendingString:@"[...]"];*/
+                _chatContentLabel.attributedText = nil;
+                _chatContentLabel.text = text;
+            } else {
+                NSString *name = [FastAddressBook displayNameForAddress:linphone_chat_message_get_from_address(last_msg)];
+                if ([name length] > 25) {
+                    name = [[name substringToIndex:25] stringByAppendingString:@"[...]"];
+                }
+                CGFloat fontSize = _chatContentLabel.font.pointSize;
+                UIFont *boldFont = [UIFont boldSystemFontOfSize:fontSize];
+                NSMutableAttributedString *boldText = [[NSMutableAttributedString alloc] initWithString:name attributes:@{ NSFontAttributeName : boldFont }];
+                text = [@" : " stringByAppendingString:text];
+                //NSString *fullText = [name stringByAppendingString:text];
+                /*if ([fullText length] > 50) {
+                    text = [[text substringToIndex: (50 - [name length])] stringByAppendingString:@"[...]"];
+                }*/
+                [boldText appendAttributedString:[[NSAttributedString alloc] initWithString:text]];
+                _chatContentLabel.text = nil;
+                _chatContentLabel.attributedText = boldText;
+            }
+
+            
+            LinphoneChatMessageState state = linphone_chat_message_get_state(last_msg);
+            if (outgoing && (state == LinphoneChatMessageStateDeliveredToUser || state == LinphoneChatMessageStateDisplayed || state == LinphoneChatMessageStateNotDelivered || state == LinphoneChatMessageStateFileTransferError)) {
+                [self displayImdmStatus:state];
+                CGRect newFrame = _chatContentLabel.frame;
+                newFrame.origin.x = 89;
+                _chatContentLabel.frame = newFrame;
+            } else {
+                // We displace the message 20 pixels to the left
+                [_imdmIcon setHidden:TRUE];
+                CGRect newFrame = _chatContentLabel.frame;
+                newFrame.origin.x = 69;
+                _chatContentLabel.frame = newFrame;
+            }
+        } else {
+            NSString *text = [[FastAddressBook displayNameForAddress:linphone_chat_message_get_from_address(last_msg)]
+                              stringByAppendingFormat:@" : %@", [UIChatBubbleTextCell TextMessageForChat:last_msg]];
+            // shorten long messages
+            /*if ([text length] > 50)
+                text = [[text substringToIndex:50] stringByAppendingString:@"[...]"];*/
+            [_imdmIcon setHidden:TRUE];
+            CGRect newFrame = _chatContentLabel.frame;
+            newFrame.origin.x = 69;
+            _chatContentLabel.frame = newFrame;
+            _chatContentLabel.text = text;
+        }
+        
+		linphone_chat_message_unref(last_msg);
+	} else
+		_chatContentLabel.text = nil;
+    
 	[self updateUnreadBadge];
 }
 
@@ -94,7 +158,7 @@
 	} else {
 		[_unreadCountView stopAnimating:YES];
 	}
-	UIFont *addressFont = (count <= 0) ? [UIFont systemFontOfSize:25] : [UIFont boldSystemFontOfSize:25];
+	UIFont *addressFont = (count <= 0) ? [UIFont systemFontOfSize:21] : [UIFont boldSystemFontOfSize:21];
 	_addressLabel.font = addressFont;
 }
 
@@ -127,6 +191,22 @@
 					   commitEditingStyle:UITableViewCellEditingStyleDelete
 						forRowAtIndexPath:indexPath];
 	}
+}
+
+
+- (void)displayImdmStatus:(LinphoneChatMessageState)state {
+    if (state == LinphoneChatMessageStateDeliveredToUser) {
+        [_imdmIcon setImage:[UIImage imageNamed:@"chat_delivered"]];
+        [_imdmIcon setHidden:FALSE];
+    } else if (state == LinphoneChatMessageStateDisplayed) {
+        [_imdmIcon setImage:[UIImage imageNamed:@"chat_read"]];
+        [_imdmIcon setHidden:FALSE];
+    } else if (state == LinphoneChatMessageStateNotDelivered || state == LinphoneChatMessageStateFileTransferError) {
+        [_imdmIcon setImage:[UIImage imageNamed:@"chat_error"]];
+        [_imdmIcon setHidden:FALSE];
+    } else {
+        [_imdmIcon setHidden:TRUE];
+    }
 }
 
 @end

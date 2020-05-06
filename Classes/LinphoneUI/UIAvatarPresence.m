@@ -1,10 +1,21 @@
-//
-//  UIAvatarPresence.m
-//  linphone
-//
-//  Created by Gautier Pelloux-Prayer on 12/04/16.
-//
-//
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
+ *
+ * This file is part of linphone-iphone
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #import "UIAvatarPresence.h"
 
@@ -57,11 +68,11 @@ INIT_WITH_COMMON_CF {
 		_friend ? linphone_presence_model_get_basic_status(linphone_friend_get_presence_model(_friend))
 				: LinphonePresenceBasicStatusClosed;
 	const LinphonePresenceModel *model = _friend ? linphone_friend_get_presence_model(_friend) : NULL;
-	LinphonePresenceActivity *activity =
-		model ? linphone_presence_model_get_activity(model) ?: LinphonePresenceActivityOffline : NULL;
+	LinphonePresenceActivity *activity = model ? linphone_presence_model_get_activity(model) : NULL;
 
 	LOGE(@"Friend %s status is now %s/%s since %@", _friend ? linphone_friend_get_name(_friend) : "NULL",
-		 basic == LinphonePresenceBasicStatusOpen ? "open" : "closed", linphone_presence_activity_to_string(activity),
+		 basic == LinphonePresenceBasicStatusOpen ? "open" : "closed",
+		 activity ? linphone_presence_activity_to_string(activity) : "Unknown",
 		 [NSDate dateWithTimeIntervalSince1970:linphone_presence_model_get_timestamp(model)]);
 
 	NSString *imageName;

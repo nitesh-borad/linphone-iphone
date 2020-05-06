@@ -1,20 +1,20 @@
-/* IncomingCallViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "CallIncomingView.h"
@@ -66,6 +66,10 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)fromInterfaceOrientation {
 	[super didRotateFromInterfaceOrientation:fromInterfaceOrientation];
+	if (_earlyMedia && [LinphoneManager.instance lpConfigBoolForKey:@"pref_accept_early_media"] && linphone_core_get_calls_nb(LC) < 2) {
+		_earlyMediaView.hidden = NO;
+		linphone_core_set_native_video_window_id(LC, (__bridge void *)(_earlyMediaView));
+	}
 	if (_call) {
 		[self update];
 	}
@@ -95,20 +99,36 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (void)update {
 	const LinphoneAddress *addr = linphone_call_get_remote_address(_call);
-	[ContactDisplay setDisplayNameLabel:_nameLabel forAddress:addr];
+	[ContactDisplay setDisplayNameLabel:_nameLabel forAddress:addr withAddressLabel:_addressLabel];
 	char *uri = linphone_address_as_string_uri_only(addr);
-	_addressLabel.text = [NSString stringWithUTF8String:uri];
 	ms_free(uri);
-	[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:NO] bordered:YES withRoundedRadius:YES];
+	[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:YES withRoundedRadius:YES];
 
 	_tabBar.hidden = linphone_call_params_video_enabled(linphone_call_get_remote_params(_call));
 	_tabVideoBar.hidden = !_tabBar.hidden;
 }
 
 #pragma mark - Property Functions
+static void hideSpinner(LinphoneCall *call, void *user_data) {
+	CallIncomingView *thiz = (__bridge CallIncomingView *)user_data;
+	thiz.earlyMedia = TRUE;
+	thiz.earlyMediaView.hidden = NO;
+	linphone_core_set_native_video_window_id(LC, (__bridge void *)(thiz.earlyMediaView));
+}
 
 - (void)setCall:(LinphoneCall *)call {
 	_call = call;
+	_earlyMedia = FALSE;
+	if ([LinphoneManager.instance lpConfigBoolForKey:@"pref_accept_early_media"] && linphone_core_get_calls_nb(LC) < 2) {
+		linphone_call_accept_early_media(_call);
+		// linphone_call_params_get_used_video_codec return 0 if no video stream enabled
+		if (linphone_call_params_get_used_video_codec(linphone_call_get_current_params(_call))) {
+			linphone_call_set_next_video_frame_decoded_callback(call, hideSpinner, (__bridge void *)(self));
+		}
+	} else {
+		_earlyMediaView.hidden = YES;
+	}
+	
 	[self update];
 	[self callUpdate:_call state:linphone_call_get_state(call)];
 }

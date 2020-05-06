@@ -1,24 +1,23 @@
-/* ContactsViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "PhoneMainView.h"
-#import <AddressBook/ABPerson.h>
 
 @implementation ContactSelection
 
@@ -27,6 +26,7 @@ static NSString *sAddAddress = nil;
 static NSString *sSipFilter = nil;
 static BOOL sEnableEmailFilter = FALSE;
 static NSString *sNameOrEmailFilter;
+static BOOL addAddressFromOthers = FALSE;
 
 + (void)setSelectionMode:(ContactSelectionMode)selectionMode {
 	sSelectionMode = selectionMode;
@@ -38,6 +38,7 @@ static NSString *sNameOrEmailFilter;
 
 + (void)setAddAddress:(NSString *)address {
 	sAddAddress = address;
+	addAddressFromOthers = true;
 }
 
 + (NSString *)getAddAddress {
@@ -121,13 +122,23 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
 	[ContactSelection setNameOrEmailFilter:@""];
-	[tableController loadData];
 	_searchBar.showsCancelButton = (_searchBar.text.length > 0);
+
+	int y = _searchBar.frame.origin.y + _searchBar.frame.size.height;
+	[tableController.tableView setFrame:CGRectMake(tableController.tableView.frame.origin.x,
+												   y,
+												   tableController.tableView.frame.size.width,
+												   tableController.tableView.frame.size.height)];
+	[tableController.emptyView setFrame:CGRectMake(tableController.emptyView.frame.origin.x,
+												   y,
+												   tableController.emptyView.frame.size.width,
+												   tableController.emptyView.frame.size.height)];
 
 	if (tableController.isEditing) {
 		tableController.editing = NO;
 	}
 	[self refreshButtons];
+	[_toggleSelectionButton setImage:[UIImage imageNamed:@"select_all_default.png"] forState:UIControlStateSelected];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -147,6 +158,23 @@ static UICompositeViewDescription *compositeDescription = nil;
 		[self presentViewController:errView animated:YES completion:nil];
 		[PhoneMainView.instance popCurrentView];
 	}
+	
+	// show message toast when add contact from address
+	if ([ContactSelection getAddAddress] != nil && addAddressFromOthers) {
+		UIAlertController *infoView = [UIAlertController
+									   alertControllerWithTitle:NSLocalizedString(@"Info", nil)
+									   message:NSLocalizedString(@"Select a contact or create a new one.",nil)
+									   preferredStyle:UIAlertControllerStyleAlert];
+		
+		UIAlertAction *defaultAction = [UIAlertAction actionWithTitle:@"OK"
+																style:UIAlertActionStyleDefault
+															  handler:^(UIAlertAction *action){
+															  }];
+		
+		[infoView addAction:defaultAction];
+		addAddressFromOthers = FALSE;
+		[PhoneMainView.instance presentViewController:infoView animated:YES completion:nil];
+	}
 }
 
 - (void) viewWillDisappear:(BOOL)animated {
@@ -159,6 +187,8 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)changeView:(ContactsCategory)view {
 	CGRect frame = _selectedButtonImage.frame;
 	if (view == ContactsAll && !allButton.selected) {
+		//REQUIRED TO RELOAD WITH FILTER
+		[LinphoneManager.instance setContactsUpdated:TRUE];
 		frame.origin.x = allButton.frame.origin.x;
 		[ContactSelection setSipFilter:nil];
 		[ContactSelection enableEmailFilter:FALSE];
@@ -166,6 +196,8 @@ static UICompositeViewDescription *compositeDescription = nil;
 		linphoneButton.selected = FALSE;
 		[tableController loadData];
 	} else if (view == ContactsLinphone && !linphoneButton.selected) {
+		//REQUIRED TO RELOAD WITH FILTER
+		[LinphoneManager.instance setContactsUpdated:TRUE];
 		frame.origin.x = linphoneButton.frame.origin.x;
 		[ContactSelection setSipFilter:LinphoneManager.instance.contactFilter];
 		[ContactSelection enableEmailFilter:FALSE];
@@ -203,7 +235,8 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (IBAction)onDeleteClick:(id)sender {
-	NSString *msg = [NSString stringWithFormat:NSLocalizedString(@"Do you want to delete selected contacts?", nil)];
+	NSString *msg = [NSString stringWithFormat:NSLocalizedString(@"Do you want to delete selected contacts?\nThey will also be deleted from your phone's address book.", nil)];
+	[LinphoneManager.instance setContactsUpdated:TRUE];
 	[UIConfirmationDialog ShowWithMessage:msg
 		cancelMessage:nil
 		confirmMessage:nil
@@ -218,13 +251,13 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (IBAction)onEditionChangeClick:(id)sender {
-	allButton.hidden = linphoneButton.hidden = _selectedButtonImage.hidden = addButton.hidden =
-		self.tableController.isEditing;
+	allButton.hidden = linphoneButton.hidden = _selectedButtonImage.hidden = addButton.hidden =	self.tableController.isEditing;
 }
 
 - (void)searchBarCancelButtonClicked:(UISearchBar *)searchBar {
 	searchBar.text = @"";
 	[self searchBar:searchBar textDidChange:@""];
+	[LinphoneManager.instance setContactsUpdated:TRUE];
 	[tableController loadData];
 	[searchBar resignFirstResponder];
 }
@@ -242,6 +275,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	// searchBar.text = [searchText uppercaseString];
 	[ContactSelection setNameOrEmailFilter:searchText];
 	if (searchText.length == 0) {
+		[LinphoneManager.instance setContactsUpdated:TRUE];
 		[tableController loadData];
 	} else {
 		[tableController loadSearchedData];
@@ -264,10 +298,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-	if (![self.searchBar isFirstResponder]) {
-		return NO;
-	}
-	return YES;
+	return NO;
 }
 
 @end

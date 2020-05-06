@@ -1,20 +1,20 @@
-/* Utils.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import <UIKit/UIView.h>
@@ -31,36 +31,10 @@
 @implementation LinphoneUtils
 
 + (BOOL)hasSelfAvatar {
-	return [NSURL URLWithString:[LinphoneManager.instance lpConfigStringForKey:@"avatar"]] != nil;
+	return [LinphoneManager.instance lpConfigStringForKey:@"avatar"] != nil;
 }
 + (UIImage *)selfAvatar {
-	NSURL *url = [NSURL URLWithString:[LinphoneManager.instance lpConfigStringForKey:@"avatar"]];
-	__block UIImage *ret = nil;
-	if (url) {
-		__block NSConditionLock *photoLock = [[NSConditionLock alloc] initWithCondition:1];
-		// load avatar synchronously so that we can return UIIMage* directly - since we are
-		// only using thumbnail, it must be pretty fast to fetch even without cache.
-		dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-		  [LinphoneManager.instance.photoLibrary assetForURL:url
-			  resultBlock:^(ALAsset *asset) {
-				ret = [[UIImage alloc] initWithCGImage:[asset thumbnail]];
-				[photoLock lock];
-				[photoLock unlockWithCondition:0];
-			  }
-			  failureBlock:^(NSError *error) {
-				LOGE(@"Can't read avatar");
-				[photoLock lock];
-				[photoLock unlockWithCondition:0];
-			  }];
-		});
-		[photoLock lockWhenCondition:0];
-		[photoLock unlock];
-	}
-
-	if (!ret) {
-		ret = [UIImage imageNamed:@"avatar.png"];
-	}
-	return ret;
+    return [LinphoneManager.instance avatar];
 }
 
 + (NSString *)durationToString:(int)duration {
@@ -70,6 +44,32 @@
 		duration = duration % 3600;
 	}
 	return [result stringByAppendingString:[NSString stringWithFormat:@"%02i:%02i", (duration / 60), (duration % 60)]];
+}
+
++ (NSString *) intervalToString:(NSTimeInterval)interval {
+	NSDateComponentsFormatter *formatter = [[NSDateComponentsFormatter alloc] init];
+	formatter.allowedUnits = NSCalendarUnitSecond;
+	formatter.unitsStyle = NSDateComponentsFormatterUnitsStyleAbbreviated;
+	formatter.zeroFormattingBehavior = NSDateComponentsFormatterZeroFormattingBehaviorDropAll;
+	return [formatter stringFromTimeInterval:interval];
+}
+
+
++ (NSMutableDictionary <NSString *, PHAsset *> *)photoAssetsDictionary {
+    NSMutableDictionary <NSString *, PHAsset *> *assetDict = [NSMutableDictionary dictionary];
+    
+    PHFetchOptions *options = [[PHFetchOptions alloc] init];
+    [options setIncludeHiddenAssets:YES];
+    [options setIncludeAllBurstAssets:YES];
+    
+    PHFetchResult *fetchRes = [PHAsset fetchAssetsWithOptions:options];
+    
+    for (PHAsset *asset in fetchRes) {
+        NSString *key = [asset valueForKey:@"filename"];
+        [assetDict setObject:asset forKey:[[key componentsSeparatedByString:@"."] firstObject]];
+    }
+    
+    return assetDict;
 }
 
 + (NSString *)timeToString:(time_t)time withFormat:(LinphoneDateFormat)format {
@@ -454,48 +454,73 @@
 }
 
 + (LinphoneAddress *)normalizeSipOrPhoneAddress:(NSString *)value {
-	if (!value) {
-		return NULL;
-	}
-	LinphoneProxyConfig *cfg = linphone_core_get_default_proxy_config(LC);
-	const char * normvalue;
-	if (linphone_proxy_config_is_phone_number(cfg, value.UTF8String)) {
-		normvalue = linphone_proxy_config_normalize_phone_number(cfg, value.UTF8String);
-	} else {
-		normvalue = value.UTF8String;
-	}
-	LinphoneAddress *addr = linphone_proxy_config_normalize_sip_uri(cfg, normvalue);
-	
-	// first try to find a friend with the given address
-	Contact *c = [FastAddressBook getContactWithAddress:addr];
-	if (c && c.friend) {
-		LinphoneFriend *f = c.friend;
-		const LinphonePresenceModel *m =
-			f ? linphone_friend_get_presence_model_for_uri_or_tel(f, value.UTF8String) : NULL;
-		const char *contact = m ? linphone_presence_model_get_contact(m) : NULL;
-		if (contact) {
-			LinphoneAddress *contact_addr = linphone_address_new(contact);
-			if (contact_addr) {
-				linphone_address_destroy(addr);
-				return contact_addr;
-			}
-		}
+  	if (!value || [value isEqualToString:@""])
+    	return NULL;
+
+  	LinphoneProxyConfig *cfg = linphone_core_get_default_proxy_config(LC);
+  	const char *normvalue;
+	normvalue = linphone_proxy_config_is_phone_number(cfg, value.UTF8String)
+	  	? linphone_proxy_config_normalize_phone_number(cfg, value.UTF8String)
+		: value.UTF8String;
+
+  	LinphoneAddress *addr = linphone_proxy_config_normalize_sip_uri(cfg, normvalue);
+  	// first try to find a friend with the given address
+  	Contact *c = [FastAddressBook getContactWithAddress:addr];
+
+  	if (c && c.friend) {
+    	LinphoneFriend *f = c.friend;
+    	const LinphonePresenceModel *m = f
+			? linphone_friend_get_presence_model_for_uri_or_tel(f, value.UTF8String)
+			: NULL;
+    	const char *contact = m ? linphone_presence_model_get_contact(m) : NULL;
+    	if (contact) {
+      		LinphoneAddress *contact_addr = linphone_address_new(contact);
+      		if (contact_addr) {
+				linphone_address_unref(addr);
+        		return contact_addr;
+      		}
+    	}
 	}
 
-	// since user wants to escape plus, we assume it expects to have phone numbers by default
-	if (addr) {
-		if (cfg && (linphone_proxy_config_get_dial_escape_plus(cfg))) {
-			if (linphone_proxy_config_is_phone_number(cfg, normvalue)) {
-				linphone_address_set_username(addr, normvalue);
-			}
-		} else {
-			if (linphone_proxy_config_is_phone_number(cfg, value.UTF8String)) {
-				linphone_address_set_username(addr, value.UTF8String);
-			}
-		}
-	}
-
+	// since user wants to escape plus, we assume it expects to have phone
+	// numbers by default
+	if (addr && cfg) {
+		const char *username = linphone_proxy_config_get_dial_escape_plus(cfg) ? normvalue : value.UTF8String;
+		if (linphone_proxy_config_is_phone_number(cfg, username))
+			linphone_address_set_username(addr, linphone_proxy_config_normalize_phone_number(cfg, username));
+	 }
 	return addr;
+}
+
++ (NSArray *)parseRecordingName:(NSString *)filename {
+    NSString *rec = @"recording_"; //key that helps find recordings
+    NSString *subName = [filename substringFromIndex:[filename rangeOfString:rec].location]; //We remove the parent folders if they exist in the filename
+    NSArray *splitString = [subName componentsSeparatedByString:@"_"];
+    //splitString: first element is the 'recording' prefix, last element is the date with the "E-d-MMM-yyyy-HH-mm-ss" format.
+    NSString *name = [[splitString subarrayWithRange:NSMakeRange(1, [splitString count] -2)] componentsJoinedByString:@""];
+    NSDateFormatter *format = [[NSDateFormatter alloc] init];
+    [format setDateFormat:@"E-d-MMM-yyyy-HH-mm-ss"];
+    NSString *dateWithMkv = [splitString objectAtIndex:[splitString count]-1]; //this will be in the form "E-d-MMM-yyyy-HH-mm-ss.mkv", we have to delete the extension
+    NSDate *date = [format dateFromString:[dateWithMkv substringToIndex:[dateWithMkv length] - 4]];
+    NSArray *res = [NSArray arrayWithObjects:name, date, nil];
+    return res;
+}
+
++ (UIAlertController *)networkErrorView {
+    UIAlertController *errView =
+    [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Network Error", nil)
+                                        message:NSLocalizedString(@"There is no network connection available, "
+                                                                  @"enable WIFI or WWAN prior to place a call",
+                                                                  nil)
+                                 preferredStyle:UIAlertControllerStyleAlert];
+    
+    UIAlertAction *defaultAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", nil)
+                                                            style:UIAlertActionStyleDefault
+                                                          handler:^(UIAlertAction *action){
+                                                          }];
+    
+    [errView addAction:defaultAction];
+    return errView;
 }
 
 @end
@@ -515,6 +540,29 @@
 	floatSize = floatSize / 1024;
 
 	return ([NSString stringWithFormat:@"%1.1f GB", floatSize]);
+}
+
+@end
+
+@implementation UIImage (systemIcons)
+
++ (UIImage *)imageFromSystemBarButton:(UIBarButtonSystemItem)systemItem :(UIColor *) color {
+    // thanks to Renetik https://stackoverflow.com/a/49822488
+    UIToolbar *bar = UIToolbar.new;
+    UIBarButtonItem *buttonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:systemItem target:nil action:nil];
+    [bar setItems:@[buttonItem] animated:NO];
+    [bar snapshotViewAfterScreenUpdates:YES];
+    for (UIView *view in [(id) buttonItem view].subviews)
+        if ([view isKindOfClass:UIButton.class]) {
+            UIImage *image = [((UIButton *) view).imageView.image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+            UIGraphicsBeginImageContextWithOptions(image.size, NO, image.scale);
+            //[color set];
+            [image drawInRect:CGRectMake(0, 0, image.size.width, image.size.height)];
+            image = UIGraphicsGetImageFromCurrentImageContext();
+            UIGraphicsEndImageContext();
+            return image;
+        }
+    return nil;
 }
 
 @end
@@ -565,6 +613,28 @@
 		label.text = [FastAddressBook displayNameForAddress:addr];
 	}
 }
+
++ (void)setDisplayNameLabel:(UILabel *)label forAddress:(const LinphoneAddress *)addr withAddressLabel:(UILabel*)addressLabel{
+	Contact *contact = [FastAddressBook getContactWithAddress:addr];
+	NSString *tmpAddress = nil;
+	if (contact) {
+		[ContactDisplay setDisplayNameLabel:label forContact:contact];
+		tmpAddress = [NSString stringWithUTF8String:linphone_address_as_string_uri_only(addr)];
+		addressLabel.hidden = FALSE;
+	} else {
+		label.text = [FastAddressBook displayNameForAddress:addr];
+		if([LinphoneManager.instance lpConfigBoolForKey:@"display_phone_only" inSection:@"app"])
+			addressLabel.hidden = TRUE;
+		else
+			tmpAddress = [NSString stringWithUTF8String:linphone_address_as_string_uri_only(addr)];
+	}
+	NSRange range = [tmpAddress rangeOfString:@";"];
+	if (range.location != NSNotFound) {
+		tmpAddress = [tmpAddress substringToIndex:range.location];
+	}
+	addressLabel.text = tmpAddress;
+}
+
 
 @end
 
@@ -623,6 +693,36 @@
 	UIGraphicsEndImageContext();
 
 	return scaledImage;
+}
+
++ (UIImage *)resizeImage:(UIImage *)image withMaxWidth:(float)maxWidth andMaxHeight:(float)maxHeight {
+    float actualHeight = image.size.height;
+    float actualWidth = image.size.width;
+    float imgRatio = actualWidth / actualHeight;
+    float maxRatio = maxWidth / maxHeight;
+    float compressionQuality = 1;
+    if (actualHeight > maxHeight || actualWidth > maxWidth)
+    {
+        if (imgRatio < maxRatio) {
+            imgRatio = maxHeight / actualHeight;
+            actualWidth = imgRatio * actualWidth;
+            actualHeight = maxHeight;
+        } else if (imgRatio > maxRatio) {
+            imgRatio = maxWidth / actualWidth;
+            actualHeight = imgRatio * actualHeight;
+            actualWidth = maxWidth;
+        } else {
+            actualHeight = maxHeight;
+            actualWidth = maxWidth;
+        }
+    }
+    CGRect rect = CGRectMake(0.0, 0.0, actualWidth, actualHeight);
+    UIGraphicsBeginImageContext(rect.size);
+    [image drawInRect:rect];
+    UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
+    NSData *imageData = UIImageJPEGRepresentation(img, compressionQuality);
+    UIGraphicsEndImageContext();
+    return [UIImage imageWithData:imageData];
 }
 
 @end
@@ -725,6 +825,94 @@
 		[[UIImage alloc] initWithCGImage:decompressedImageRef scale:image.scale orientation:image.imageOrientation];
 	CGImageRelease(decompressedImageRef);
 	return decompressedImage;
+}
+
+@end
+
+@implementation UIImage (ResizeAndThumbnail)
+
++ (UIImage *)UIImageThumbnail:(UIImage *)image thumbSize:(CGFloat) tbSize {
+    // Create a thumbnail version of the image for the event object.
+    CGSize size = image.size;
+    CGSize croppedSize;
+    CGFloat offsetX = 0.0;
+    CGFloat offsetY = 0.0;
+    CGFloat actualTbSize = MAX(tbSize, MAX(size.height, size.width));
+    // check the size of the image, we want to make it
+    // a square with sides the size of the smallest end
+    if (size.width > size.height) {
+        offsetX = (size.height - size.width) / 2;
+        croppedSize = CGSizeMake(size.height, size.height);
+    } else {
+        offsetY = (size.width - size.height) / 2;
+        croppedSize = CGSizeMake(size.width, size.width);
+    }
+    
+    // Crop the image before resize
+    CGRect clippedRect = CGRectMake(offsetX * -1,
+                                    offsetY * -1,
+                                    croppedSize.width,
+                                    croppedSize.height);
+    CGImageRef imageRef = CGImageCreateWithImageInRect([image CGImage],
+                                                       clippedRect);
+    
+    UIImage *cropped = [UIImage imageWithCGImage:imageRef];
+    CGImageRelease(imageRef);
+    // Done cropping
+    
+    // Resize the image
+    CGRect rect = CGRectMake(0, 0, actualTbSize, actualTbSize);
+    
+    UIGraphicsBeginImageContext(rect.size);
+    [cropped drawInRect:rect];
+    UIImage *thumbnail = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    // Done Resizing
+    
+    return thumbnail;
+}
+
+
++ (UIImage *)UIImageResize:(UIImage *)image toSize:(CGSize) newSize {
+    CGImageRef newImage = [image CGImage];
+    CGSize originalSize = [image size];
+    float originalAspectRatio = originalSize.width / originalSize.height;
+    // We resize in width and crop in height
+    if (originalSize.width > newSize.width) {
+        int height = newSize.width / originalAspectRatio;
+        newImage = [UIImage resizeCGImage:newImage toWidth:newSize.width andHeight:height];
+        originalSize.height = height;
+    }
+    CGRect cropRect = CGRectMake(0, 0, newSize.width, newSize.height);
+    if (newSize.height < originalSize.height) cropRect.origin.y = (originalSize.height - newSize.height)/2;
+    newImage = CGImageCreateWithImageInRect(newImage, cropRect);
+    
+    
+    UIImage *cropped = [UIImage imageWithCGImage:newImage];
+    CGImageRelease(newImage);
+    return cropped;
+}
+
++ (CGImageRef)resizeCGImage:(CGImageRef)image toWidth:(int)width andHeight:(int)height {
+    // create context, keeping original image properties
+    CGColorSpaceRef colorspace = CGImageGetColorSpace(image);
+    CGContextRef context = CGBitmapContextCreate(NULL, width, height,
+                                                 CGImageGetBitsPerComponent(image),
+                                                 CGImageGetBytesPerRow(image),
+                                                 colorspace,
+                                                 CGImageGetAlphaInfo(image));
+    CGColorSpaceRelease(colorspace);
+    
+    if(context == NULL)
+        return nil;
+    
+    // draw image to context (resizing it)
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
+    // extract resulting image from context
+    CGImageRef imgRef = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
+    
+    return imgRef;
 }
 
 @end

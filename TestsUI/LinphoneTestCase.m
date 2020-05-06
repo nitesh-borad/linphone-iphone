@@ -1,10 +1,21 @@
-//
-//  LinphoneTestCase.m
-//  linphone
-//
-//  Created by Guillaume BIENKOWSKI on 19/01/2015.
-//
-//
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
+ *
+ * This file is part of linphone-iphone
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #import "LinphoneTestCase.h"
 
@@ -127,12 +138,11 @@
 		linphone_address_set_header(testAddr, "X-Create-Account", "yes");
 		linphone_address_set_transport(testAddr, LinphoneTransportTcp);
 		linphone_address_set_port(testAddr, 0);
-
-		LinphoneProxyConfig *testProxy = linphone_proxy_config_new();
+		LinphoneProxyConfig *testProxy = linphone_core_create_proxy_config(lc);
 		linphone_proxy_config_set_identity_address(testProxy, testAddr);
 		linphone_proxy_config_set_server_addr(testProxy, [self accountProxyRoute].UTF8String);
 		linphone_proxy_config_set_route(testProxy, [self accountProxyRoute].UTF8String);
-		linphone_proxy_config_set_ref_key(testProxy, "push_notification");
+		linphone_proxy_config_set_push_notification_allowed(testProxy, true);
 
 		LinphoneAuthInfo *testAuth = linphone_auth_info_new(linphone_address_get_username(testAddr), NULL,
 															linphone_address_get_username(testAddr), NULL, NULL,
@@ -145,13 +155,13 @@
 		[[LinphoneManager instance] configurePushTokenForProxyConfig:testProxy];
 
 		linphone_proxy_config_unref(testProxy);
-		linphone_auth_info_destroy(testAuth);
+		linphone_auth_info_unref(testAuth);
 		linphone_address_unref(testAddr);
 
 		linphone_core_set_file_transfer_server(lc, "https://www.linphone.org:444/lft.php");
 
 		// reload address book to prepend proxy config domain to contacts' phone number
-		[[[LinphoneManager instance] fastAddressBook] reload];
+		[[[LinphoneManager instance] fastAddressBook] fetchContactsInBackGroundThread];
 
 		[self waitForRegistration];
 		[[LinphoneManager instance] lpConfigSetInt:NO forKey:@"animations_preference"];
@@ -170,18 +180,18 @@
 }
 
 - (void)waitForRegistration {
-	// wait for account to be registered
+	// wait for account to be connected
 	int timeout = 15;
 	while (timeout &&
 		   ![tester tryFindingViewWithAccessibilityLabel:@"Registration state"
-												   value:@"Registered"
+												   value:@"Connected"
 												  traits:UIAccessibilityTraitButton
 												   error:nil]) {
 		[tester waitForTimeInterval:1];
 		timeout--;
 	}
 	[tester waitForViewWithAccessibilityLabel:@"Registration state"
-										value:@"Registered"
+										value:@"Connected"
 									   traits:UIAccessibilityTraitButton];
 }
 

@@ -1,23 +1,22 @@
-/* DialerViewController.h
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2009  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#import <AVFoundation/AVAudioSession.h>
 #import <AudioToolbox/AudioToolbox.h>
 
 #import "LinphoneManager.h"
@@ -192,16 +191,25 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (void)coreUpdateEvent:(NSNotification *)notif {
-	if (IPAD) {
-		if (linphone_core_video_display_enabled(LC) && linphone_core_video_preview_enabled(LC)) {
-			linphone_core_set_native_preview_window_id(LC, (__bridge void *)(_videoPreview));
-			[_backgroundView setHidden:FALSE];
-			[_videoCameraSwitch setHidden:FALSE];
-		} else {
-			linphone_core_set_native_preview_window_id(LC, NULL);
-			[_backgroundView setHidden:TRUE];
-			[_videoCameraSwitch setHidden:TRUE];
+	@try {
+		if (IPAD) {
+			if (linphone_core_video_display_enabled(LC) && linphone_core_video_preview_enabled(LC)) {
+				linphone_core_set_native_preview_window_id(LC, (__bridge void *)(_videoPreview));
+				[_backgroundView setHidden:FALSE];
+				[_videoCameraSwitch setHidden:FALSE];
+			} else {
+				linphone_core_set_native_preview_window_id(LC, NULL);
+				[_backgroundView setHidden:TRUE];
+				[_videoCameraSwitch setHidden:TRUE];
+			}
 		}
+	} @catch (NSException *exception) {
+		if ([exception.name isEqualToString:@"LinphoneCoreException"]) {
+			LOGE(@"Core already destroyed");
+			return;
+		}
+		LOGE(@"Uncaught exception : %@", exception.description);
+		abort();
 	}
 }
 
@@ -312,9 +320,9 @@ static UICompositeViewDescription *compositeDescription = nil;
 																  LOGW(@"Exception while destroying linphone core: %@", e);
 															  } @finally {
 																  if ([NSFileManager.defaultManager
-																	   isDeletableFileAtPath:[LinphoneManager documentFile:@"linphonerc"]] == YES) {
+																	   isDeletableFileAtPath:[LinphoneManager preferenceFile:@"linphonerc"]] == YES) {
 																	  [NSFileManager.defaultManager
-																	   removeItemAtPath:[LinphoneManager documentFile:@"linphonerc"]
+																	   removeItemAtPath:[LinphoneManager preferenceFile:@"linphonerc"]
 																	   error:nil];
 																  }
 #ifdef DEBUG
@@ -373,9 +381,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 - (void)mailComposeController:(MFMailComposeViewController *)controller
 		  didFinishWithResult:(MFMailComposeResult)result
 						error:(NSError *)error {
-	[controller dismissViewControllerAnimated:TRUE
-								   completion:^{
-								   }];
+	[controller dismissViewControllerAnimated:TRUE completion:nil];
 	[self.navigationController setNavigationBarHidden:TRUE animated:FALSE];
 }
 

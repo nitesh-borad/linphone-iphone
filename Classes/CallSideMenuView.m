@@ -1,10 +1,21 @@
-//
-//  SideMenuViewController.m
-//  linphone
-//
-//  Created by Gautier Pelloux-Prayer on 28/07/15.
-//
-//
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
+ *
+ * This file is part of linphone-iphone
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #import "CallSideMenuView.h"
 #import "LinphoneManager.h"
@@ -139,15 +150,26 @@
 	}
 
 	if (stats != NULL) {
+		[result appendString:[NSString stringWithFormat:@"Download bandwidth: %1.1f kbits/s",
+														linphone_call_stats_get_download_bandwidth(stats)]];
+		[result appendString:@"\n"];
+		[result appendString:[NSString stringWithFormat:@"Upload bandwidth: %1.1f kbits/s",
+														linphone_call_stats_get_upload_bandwidth(stats)]];
+		[result appendString:@"\n"];
+        if (stream == LinphoneStreamTypeVideo) {
+            /*[result appendString:[NSString stringWithFormat:@"Estimated download bandwidth: %1.1f kbits/s",
+                                  linphone_call_stats_get_estimated_download_bandwidth(stats)]];
+            [result appendString:@"\n"];*/
+        }
 		[result
-			appendString:[NSString stringWithFormat:@"Download bandwidth: %1.1f kbits/s", stats->download_bandwidth]];
+			appendString:[NSString stringWithFormat:@"ICE state: %@",
+													[self.class iceToString:linphone_call_stats_get_ice_state(stats)]]];
 		[result appendString:@"\n"];
-		[result appendString:[NSString stringWithFormat:@"Upload bandwidth: %1.1f kbits/s", stats->upload_bandwidth]];
-		[result appendString:@"\n"];
-		[result appendString:[NSString stringWithFormat:@"ICE state: %@", [self.class iceToString:stats->ice_state]]];
-		[result appendString:@"\n"];
-		
-		[result appendString:[NSString stringWithFormat:@"Afinet: %@", [self.class afinetToString:stats->rtp_remote_family]]];
+		[result
+			appendString:[NSString
+							 stringWithFormat:@"Afinet: %@",
+											  [self.class afinetToString:linphone_call_stats_get_ip_family_of_remote(
+																			 stats)]]];
 		[result appendString:@"\n"];
 
 		// RTP stats section (packet loss count, etc)
@@ -166,15 +188,16 @@
 		[result appendString:@"\n"];
 
 		if (stream == LinphoneStreamTypeVideo) {
-			MSVideoSize sentSize = linphone_call_params_get_sent_video_size(params);
-			MSVideoSize recvSize = linphone_call_params_get_received_video_size(params);
+			const LinphoneVideoDefinition *recv_definition = linphone_call_params_get_received_video_definition(params);
+			const LinphoneVideoDefinition *sent_definition = linphone_call_params_get_sent_video_definition(params);
 			float sentFPS = linphone_call_params_get_sent_framerate(params);
 			float recvFPS = linphone_call_params_get_received_framerate(params);
-			[result appendString:[NSString stringWithFormat:@"Sent video resolution: %dx%d (%.1fFPS)", sentSize.width,
-															sentSize.height, sentFPS]];
+			[result appendString:[NSString stringWithFormat:@"Sent video resolution: %dx%d (%.1fFPS)", linphone_video_definition_get_width(sent_definition),
+															linphone_video_definition_get_height(sent_definition), sentFPS]];
 			[result appendString:@"\n"];
 			[result appendString:[NSString stringWithFormat:@"Received video resolution: %dx%d (%.1fFPS)",
-															recvSize.width, recvSize.height, recvFPS]];
+								  linphone_video_definition_get_width(recv_definition),
+								  linphone_video_definition_get_height(recv_definition), recvFPS]];
 			[result appendString:@"\n"];
 		}
 	}

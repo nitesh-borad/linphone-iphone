@@ -1,26 +1,28 @@
-/* ImagePickerViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import <MobileCoreServices/UTCoreTypes.h>
-
 #import "ImagePickerView.h"
 #import "PhoneMainView.h"
+#import "SVProgressHUD.h"
+#import "ShareViewController.h"
+
 
 @implementation ImagePickerView
 
@@ -159,16 +161,119 @@ static UICompositeViewDescription *compositeDescription = nil;
 #pragma mark - UIImagePickerControllerDelegate Functions
 
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info {
-	[self dismiss];
-	UIImage *image = [info objectForKey:UIImagePickerControllerEditedImage];
-	if (image == nil) {
-		image = [info objectForKey:UIImagePickerControllerOriginalImage];
+	
+	dispatch_async(dispatch_get_main_queue(), ^{
+		
+		[self dismiss];
+		
+		NSString *type = [info objectForKey:UIImagePickerControllerMediaType];
+		if ([type isEqualToString:(NSString *)kUTTypeVideo] ||
+			[type isEqualToString:(NSString *)kUTTypeMovie]) {
+			NSURL *urlvideo = [info objectForKey:UIImagePickerControllerMediaURL];
+			if(urlvideo != nil && self.imagePickerDelegate != nil) {
+				[imagePickerDelegate imagePickerDelegateVideo:urlvideo info:info];
+			}
+		} else {
+			NSURL *alassetURL = [info objectForKey:UIImagePickerControllerReferenceURL];
+			PHAsset *phasset = nil;
+			// when photo from camera, it hasn't be saved
+			if (alassetURL) {
+				PHFetchResult<PHAsset *> *phFetchResult = [PHAsset fetchAssetsWithALAssetURLs:@[alassetURL] options:nil];
+				phasset = [phFetchResult firstObject];
+			}
+			
+			UIImage *image = [info objectForKey:UIImagePickerControllerEditedImage] ? [info objectForKey:UIImagePickerControllerEditedImage] : [info objectForKey:UIImagePickerControllerOriginalImage];
+			if (!phasset) {
+				[self writeImageToGallery:image];
+				return;
+			}
+			[self passImageToDelegate:image PHAssetId:[phasset localIdentifier]];
+		}
+	});
+	
+}
+
+
+-(void) writeImageToGallery:(UIImage *)image {
+	NSString *localIdentifier;
+	[SVProgressHUD show];
+	
+	PHFetchResult<PHAssetCollection *> *assetCollections = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeAlbumRegular options:nil];
+	__block PHObjectPlaceholder *placeHolder;
+
+	for (PHAssetCollection *assetCollection in assetCollections) {
+		if([[assetCollection localizedTitle] isEqualToString:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleDisplayName"]]  ){
+			localIdentifier = assetCollection.localIdentifier;
+			break;
+		}
 	}
-	if (image != nil && imagePickerDelegate != nil) {
-		[imagePickerDelegate imagePickerDelegateImage:image info:info];
+	
+	if(localIdentifier ){
+		PHFetchResult *fetchResult = [PHAssetCollection fetchAssetCollectionsWithLocalIdentifiers:@[localIdentifier] options:nil];
+		PHAssetCollection *assetCollection = fetchResult.firstObject;
+
+		[[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+			PHAssetChangeRequest *assetChangeRequest = [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+			PHAssetCollectionChangeRequest *assetCollectionChangeRequest = [PHAssetCollectionChangeRequest changeRequestForAssetCollection:assetCollection];
+			[assetCollectionChangeRequest addAssets:@[[assetChangeRequest placeholderForCreatedAsset]]];
+			placeHolder = [assetChangeRequest placeholderForCreatedAsset];
+		} completionHandler:^(BOOL success, NSError *error) {
+			dispatch_async(dispatch_get_main_queue(), ^{
+			[SVProgressHUD dismiss];
+			if (!success) {
+				NSLog(@"Error creating asset: %@", error);
+			} else {
+				[self passImageToDelegate:image PHAssetId:[placeHolder localIdentifier]];
+			}
+			});
+		}];
+	}else{
+		__block PHObjectPlaceholder *albumPlaceholder;
+		[[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+			PHAssetCollectionChangeRequest *changeRequest = [PHAssetCollectionChangeRequest creationRequestForAssetCollectionWithTitle:[[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleDisplayName"]];
+			albumPlaceholder = changeRequest.placeholderForCreatedAssetCollection;
+		} completionHandler:^(BOOL success, NSError *error) {
+			if (success) {
+				PHFetchResult *fetchResult = [PHAssetCollection fetchAssetCollectionsWithLocalIdentifiers:@[albumPlaceholder.localIdentifier] options:nil];
+				PHAssetCollection *assetCollection = fetchResult.firstObject;
+				
+				[[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+					PHAssetChangeRequest *assetChangeRequest = [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+					PHAssetCollectionChangeRequest *assetCollectionChangeRequest = [PHAssetCollectionChangeRequest changeRequestForAssetCollection:assetCollection];
+					[assetCollectionChangeRequest addAssets:@[[assetChangeRequest placeholderForCreatedAsset]]];
+					placeHolder = [assetChangeRequest placeholderForCreatedAsset];
+				} completionHandler:^(BOOL success, NSError *error) {
+					dispatch_async(dispatch_get_main_queue(), ^{
+
+					[SVProgressHUD dismiss];
+					if (!success) {
+						NSLog(@"Error creating asset: %@", error);
+					} else {
+						[self passImageToDelegate:image PHAssetId:[placeHolder localIdentifier]];
+					}
+					});
+				}];
+			} else {
+				[SVProgressHUD dismiss];
+				NSLog(@"Error creating album: %@", error);
+			}
+		}];
+		
 	}
 }
 
+
+- (void) passImageToDelegate:(UIImage *)image PHAssetId:(NSString *)assetId {
+	if (imagePickerDelegate != nil) {
+		[imagePickerDelegate imagePickerDelegateImage:image info:(NSString *)assetId];
+	}
+}
+/*
+    if (imagePickerDelegate != nil) {
+        [imagePickerDelegate imagePickerDelegateImage:image info:(__bridge NSDictionary *)contextInfo];
+    }
+}
+*/
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
 	[self dismiss];
 }
@@ -191,14 +296,15 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 + (void)SelectImageFromDevice:(id<ImagePickerDelegate>)delegate
 				   atPosition:(UIView *)ipadPopoverView
-					   inView:(UIView *)ipadView {
+					   inView:(UIView *)ipadView
+	 withDocumentMenuDelegate:(id<UIDocumentMenuDelegate>)documentMenuDelegate {
 	void (^block)(UIImagePickerControllerSourceType) = ^(UIImagePickerControllerSourceType type) {
 	  ImagePickerView *view = VIEW(ImagePickerView);
 	  view.sourceType = type;
 
 	  // Displays a control that allows the user to choose picture or
 	  // movie capture, if both are available:
-	  view.mediaTypes = [NSArray arrayWithObject:(NSString *)kUTTypeImage];
+	  view.mediaTypes = [NSArray arrayWithObjects:(NSString *)kUTTypeMovie,(NSString *)kUTTypeImage,nil];
 
 	  // Hides the controls for moving & scaling pictures, or for
 	  // trimming movies. To instead show the controls, use YES.
@@ -221,23 +327,84 @@ static UICompositeViewDescription *compositeDescription = nil;
 		  [PhoneMainView.instance changeCurrentView:view.compositeViewDescription];
 	  }
 	};
+    if ([PHPhotoLibrary authorizationStatus] == PHAuthorizationStatusAuthorized) {
+        DTActionSheet *sheet = [[DTActionSheet alloc] initWithTitle:NSLocalizedString(@"Select the source", nil)];
+        if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
+            [sheet addButtonWithTitle:NSLocalizedString(@"Camera", nil)
+                                block:^() {
+                                    if([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo] !=  AVAuthorizationStatusAuthorized ) {
+                                        [[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Camera's permission", nil) message:NSLocalizedString(@"Camera not authorized", nil) delegate:nil cancelButtonTitle:nil otherButtonTitles:@"Continue", nil] show];
+                                        return;
+                                    }
+                                    block(UIImagePickerControllerSourceTypeCamera);
+                                }];
+        }
+        if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
+            [sheet addButtonWithTitle:NSLocalizedString(@"Photo library", nil)
+                                block:^() {
+                                    block(UIImagePickerControllerSourceTypePhotoLibrary);
+                                }];
+        }
+		
+		if (documentMenuDelegate) {
+			[sheet addButtonWithTitle:NSLocalizedString(@"Document",nil) block:^(){
+				[self pickDocumentForDelegate:documentMenuDelegate];
+			}];
+		}
+        [sheet addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
+        
+        [sheet showInView:PhoneMainView.instance.view];
+    } else {
+        [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if ([PHPhotoLibrary authorizationStatus] == PHAuthorizationStatusAuthorized) {
+                    DTActionSheet *sheet = [[DTActionSheet alloc] initWithTitle:NSLocalizedString(@"Select the source", nil)];
+                    if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
+                        [sheet addButtonWithTitle:NSLocalizedString(@"Camera", nil)
+                                            block:^() {
+                                                if([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo] !=  AVAuthorizationStatusAuthorized ) {
+                                                    [[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Camera's permission", nil) message:NSLocalizedString(@"Camera not authorized", nil) delegate:nil cancelButtonTitle:nil otherButtonTitles:@"Continue", nil] show];
+                                                    return;
+                                                }
+                                                block(UIImagePickerControllerSourceTypeCamera);
+                                            }];
+                    }
+                    if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
+                        [sheet addButtonWithTitle:NSLocalizedString(@"Photo library", nil)
+                                            block:^() {
+                                                block(UIImagePickerControllerSourceTypePhotoLibrary);
+                                            }];
+                    }
+					if (documentMenuDelegate) {
+						[sheet addButtonWithTitle:NSLocalizedString(@"Document",nil) block:^(){
+							[self pickDocumentForDelegate:documentMenuDelegate];
+						}];
+					}
+                    [sheet addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
+                    
+                    [sheet showInView:PhoneMainView.instance.view];
+                } else {
+                    [[[UIAlertView alloc] initWithTitle:NSLocalizedString(@"Photo's permission", nil) message:NSLocalizedString(@"Photo not authorized", nil) delegate:nil cancelButtonTitle:nil otherButtonTitles:@"Continue", nil] show];
+                }
+            });
+        }];
+    }
+}
 
-	DTActionSheet *sheet = [[DTActionSheet alloc] initWithTitle:NSLocalizedString(@"Select picture source", nil)];
-	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
-		[sheet addButtonWithTitle:NSLocalizedString(@"Camera", nil)
-							block:^() {
-							  block(UIImagePickerControllerSourceTypeCamera);
-							}];
++(void) pickDocumentForDelegate:(id<UIDocumentMenuDelegate>)documentMenuDelegate {
+	UIDocumentMenuViewController *documentProviderMenu = [[UIDocumentMenuViewController alloc] initWithDocumentTypes:SUPPORTED_EXTENTIONS inMode:UIDocumentPickerModeImport];
+	documentProviderMenu.delegate = documentMenuDelegate;
+	if (IPAD) {
+		/* On iPad the activity view controller will be displayed as a popover using the new UIPopoverPresentationController, it requires that you specify an anchor point for the presentation of the popover using one of the three following properties: barButtonItem, sourceView, sourceRect */
+		ChatConversationView *chatView = VIEW(ChatConversationView);
+		documentProviderMenu.popoverPresentationController.sourceView = chatView.view;
+		CGRect frame = documentProviderMenu.popoverPresentationController.sourceRect;
+		CGRect topBarFrame = chatView.topBar.frame;
+		documentProviderMenu.popoverPresentationController.sourceRect = CGRectMake(topBarFrame.origin.x + topBarFrame.size.width/2, topBarFrame.origin.y + topBarFrame.size.height, frame.size.width, frame.size.height);
 	}
-	if ([UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
-		[sheet addButtonWithTitle:NSLocalizedString(@"Photo library", nil)
-							block:^() {
-							  block(UIImagePickerControllerSourceTypePhotoLibrary);
-							}];
-	}
-	[sheet addCancelButtonWithTitle:NSLocalizedString(@"Cancel", nil) block:nil];
-
-	[sheet showInView:PhoneMainView.instance.view];
+	dispatch_async(dispatch_get_main_queue(), ^ {
+		[PhoneMainView.instance presentViewController:documentProviderMenu animated:YES completion:nil];
+	});
 }
 
 @end

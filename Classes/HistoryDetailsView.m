@@ -1,20 +1,20 @@
-/* HistoryDetailsViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "HistoryDetailsView.h"
@@ -70,7 +70,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (void)viewWillAppear:(BOOL)animated {
 	[super viewWillAppear:animated];
-
+	_waitView.hidden = YES;
 	[self update];
 
 	[NSNotificationCenter.defaultCenter addObserver:self
@@ -97,13 +97,21 @@ static UICompositeViewDescription *compositeDescription = nil;
 #pragma mark - Event Functions
 
 - (void)coreUpdateEvent:(NSNotification *)notif {
-	[self update];
+	@try {
+		[self update];
+	}
+	@catch (NSException *exception) {
+		if ([exception.name isEqualToString:@"LinphoneCoreException"]) {
+			LOGE(@"Core already destroyed");
+			return;
+		}
+		LOGE(@"Uncaught exception : %@", exception.description);
+		abort();
+	}
 }
 
 - (void) deviceOrientationDidChange:(NSNotification*) notif {
-	if (IPAD) {
-		[self update];
-	}
+    [self update];
 }
 
 #pragma mark -
@@ -132,15 +140,32 @@ static UICompositeViewDescription *compositeDescription = nil;
 	}
 	_emptyLabel.hidden = YES;
 
-	LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
+	const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
 	_addContactButton.hidden = ([FastAddressBook getContactWithAddress:addr] != nil);
-	[ContactDisplay setDisplayNameLabel:_contactLabel forAddress:addr];
-	[_avatarImage setImage:[FastAddressBook imageForAddress:addr thumbnail:NO] bordered:NO withRoundedRadius:YES];
+	[ContactDisplay setDisplayNameLabel:_contactLabel forAddress:addr withAddressLabel:_addressLabel];
+	[_avatarImage setImage:[FastAddressBook imageForAddress:addr] bordered:NO withRoundedRadius:YES];
+    Contact *contact = [FastAddressBook getContactWithAddress:addr];
+    const LinphonePresenceModel *model = contact.friend ? linphone_friend_get_presence_model(contact.friend) : NULL;
+    _linphoneImage.hidden =
+    ! ((model && linphone_presence_model_get_basic_status(model) == LinphonePresenceBasicStatusOpen) || [FastAddressBook contactHasValidSipDomain:contact]);
+	LinphoneProxyConfig *cfg = linphone_core_get_default_proxy_config(LC);
+	[self shouldHideEncryptedChatView:cfg && linphone_proxy_config_get_conference_factory_uri(cfg) && model && linphone_presence_model_has_capability(model, LinphoneFriendCapabilityLimeX3dh)];
 	char *addrURI = linphone_address_as_string_uri_only(addr);
-	_addressLabel.text = [NSString stringWithUTF8String:addrURI];
 	ms_free(addrURI);
 
 	[_tableView loadDataForAddress:(callLog ? linphone_call_log_get_remote_address(callLog) : NULL)];
+}
+
+- (void)shouldHideEncryptedChatView:(BOOL)hasLime {
+    _encryptedChatView.hidden = !hasLime;
+    CGRect newFrame = _optionsView.frame;
+    if (!hasLime) {
+        newFrame.origin.x = _encryptedChatView.frame.size.width * 2/3;
+        
+    } else {
+        newFrame.origin.x = 0;
+    }
+    _optionsView.frame = newFrame;
 }
 
 #pragma mark - Action Functions
@@ -151,7 +176,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (IBAction)onContactClick:(id)event {
-	LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
+	const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
 	Contact *contact = [FastAddressBook getContactWithAddress:addr];
 	if (contact) {
 		ContactDetailsView *view = VIEW(ContactDetailsView);
@@ -162,10 +187,12 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (IBAction)onAddContactClick:(id)event {
-	LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
+	const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
 	char *lAddress = linphone_address_as_string_uri_only(addr);
 	if (lAddress != NULL) {
-		[ContactSelection setAddAddress:[NSString stringWithUTF8String:lAddress]];
+		NSString *normSip = [NSString stringWithUTF8String:lAddress];
+		normSip = [normSip hasPrefix:@"sip:"] ? [normSip substringFromIndex:4] : normSip;
+		[ContactSelection setAddAddress:normSip];
 		[ContactSelection setSelectionMode:ContactSelectionModeEdit];
 
 		[ContactSelection setSipFilter:nil];
@@ -177,18 +204,18 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (IBAction)onCallClick:(id)event {
-	LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
+	const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
 	[LinphoneManager.instance call:addr];
 }
 
 - (IBAction)onChatClick:(id)event {
 	const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
-	if (addr == NULL)
-		return;
-	ChatConversationView *view = VIEW(ChatConversationView);
-	LinphoneChatRoom *room = linphone_core_get_chat_room(LC, addr);
-	[view setChatRoom:room];
-	[PhoneMainView.instance changeCurrentView:view.compositeViewDescription];
+    [PhoneMainView.instance getOrCreateOneToOneChatRoom:addr waitView:_waitView isEncrypted:FALSE];
+}
+
+- (IBAction)onEncryptedChatClick:(id)sender {
+    const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
+    [PhoneMainView.instance getOrCreateOneToOneChatRoom:addr waitView:_waitView isEncrypted:TRUE];
 }
 
 @end

@@ -1,20 +1,20 @@
-/* AboutViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2009  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "PhoneMainView.h"
@@ -49,8 +49,10 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[super viewDidLoad];
 	NSString *name = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"];
 	_nameLabel.text = name;
-	_appVersionLabel.text = [NSString stringWithFormat:@"%@ iOS %s", name, LINPHONE_IOS_VERSION];
-	_libVersionLabel.text = [NSString stringWithFormat:@"%@ Core %s", name, linphone_core_get_version()];
+	NSDictionary *infoDict = [[NSBundle mainBundle] infoDictionary];
+    NSString *curVersion = [NSString stringWithFormat:@"version %@-alpha.%@",[infoDict objectForKey:@"CFBundleShortVersionString"],[infoDict objectForKey:@"CFBundleVersion"]];
+	_appVersionLabel.text = [NSString stringWithFormat:@"%@ iOS %@", name, curVersion];
+	_libVersionLabel.text = [NSString stringWithFormat:@"%@ SDK %s", name, LINPHONE_SDK_VERSION];
 	UITapGestureRecognizer *tapGestureRecognizer =
 		[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onLicenceTap)];
 	tapGestureRecognizer.numberOfTapsRequired = 1;
@@ -74,20 +76,20 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (IBAction)onPolicyTap {
-	NSString *url = @"http://www.linphone.org/privacy-policy.html";
+	NSString *url = @"https://www.linphone.org/terms-and-privacy";
 	if (![UIApplication.sharedApplication openURL:[NSURL URLWithString:url]]) {
 		LOGE(@"Failed to open %@, invalid URL", url);
 	}
 }
 
 - (IBAction)onLicenceTap {
-	NSString *url = @"https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html";
+	NSString *url = @"https://www.gnu.org/licenses/gpl-3.0.html";
 	if (![UIApplication.sharedApplication openURL:[NSURL URLWithString:url]]) {
 		LOGE(@"Failed to open %@, invalid URL", url);
 	}
 }
 
 - (IBAction)onDialerBackClick:(id)sender {
-	[PhoneMainView.instance popToView:DialerView.compositeViewDescription];
+	[PhoneMainView.instance popCurrentView];
 }
 @end

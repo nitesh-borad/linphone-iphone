@@ -1,20 +1,20 @@
-/* UICallButton.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2011  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "UICallButton.h"
@@ -63,7 +63,7 @@
 	if (address.length == 0) {
 		LinphoneCallLog *log = linphone_core_get_last_outgoing_call_log(LC);
 		if (log) {
-			LinphoneAddress *to = linphone_call_log_get_to(log);
+			const LinphoneAddress *to = linphone_call_log_get_to_address(log);
 			const char *domain = linphone_address_get_domain(to);
 			char *bis_address = NULL;
 			LinphoneProxyConfig *def_proxy = linphone_core_get_default_proxy_config(LC);
@@ -89,7 +89,7 @@
 		LinphoneAddress *addr = [LinphoneUtils normalizeSipOrPhoneAddress:address];
 		[LinphoneManager.instance call:addr];
 		if (addr)
-			linphone_address_destroy(addr);
+			linphone_address_unref(addr);
 	}
 }
 
@@ -102,7 +102,7 @@
 		[self setImage:[UIImage imageNamed:@"call_audio_start_disabled.png"] forState:UIControlStateDisabled];
 	}
 
-	if (LinphoneManager.instance.nextCallIsTransfer) {
+	if (CallManager.instance.nextCallIsTransfer) {
 		[self setImage:[UIImage imageNamed:@"call_transfer_default.png"] forState:UIControlStateNormal];
 		[self setImage:[UIImage imageNamed:@"call_transfer_disabled.png"] forState:UIControlStateDisabled];
 	} else if (linphone_core_get_calls_nb(LC) > 0) {

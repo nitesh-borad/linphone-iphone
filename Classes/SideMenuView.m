@@ -1,10 +1,21 @@
-//
-//  SideMenuViewController.m
-//  linphone
-//
-//  Created by Gautier Pelloux-Prayer on 28/07/15.
-//
-//
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
+ *
+ * This file is part of linphone-iphone
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #import "SideMenuView.h"
 #import "LinphoneManager.h"
@@ -55,7 +66,7 @@
 	if (default_proxy != NULL) {
 		const LinphoneAddress *addr = linphone_proxy_config_get_identity_address(default_proxy);
 		[ContactDisplay setDisplayNameLabel:_nameLabel forAddress:addr];
-		_addressLabel.text = [NSString stringWithUTF8String:linphone_proxy_config_get_identity(default_proxy)];
+		_addressLabel.text = addr? [NSString stringWithUTF8String:linphone_address_as_string(addr)] : NSLocalizedString(@"No address", nil);
 		_presenceImage.image = [StatusBarView imageForState:linphone_proxy_config_get_state(default_proxy)];
 	} else {
 		_nameLabel.text = linphone_core_get_proxy_config_list(LC) ? NSLocalizedString(@"No default account", nil) : NSLocalizedString(@"No account", nil);
@@ -65,7 +76,7 @@
 			char *as_string = linphone_address_as_string(addr);
 			_addressLabel.text = [NSString stringWithFormat:@"%s", as_string];
 			ms_free(as_string);
-			linphone_address_destroy(addr);
+			linphone_address_unref(addr);
 		} else {
 			_addressLabel.text = NSLocalizedString(@"No address", nil);
 		}
@@ -90,7 +101,7 @@
 	if (!IPAD) {
 		[PhoneMainView.instance.mainViewController hideSideMenu:YES];
 	}
-	[ImagePickerView SelectImageFromDevice:self atPosition:_avatarImage inView:self.view];
+	[ImagePickerView SelectImageFromDevice:self atPosition:_avatarImage inView:self.view withDocumentMenuDelegate:nil];
 }
 
 - (IBAction)onBackgroundClicked:(id)sender {
@@ -104,7 +115,7 @@
 
 #pragma mark - Image picker delegate
 
-- (void)imagePickerDelegateImage:(UIImage *)image info:(NSDictionary *)info {
+- (void)imagePickerDelegateImage:(UIImage *)image info:(NSString *)phAssetId {
 	// When getting image from the camera, it may be 90° rotated due to orientation
 	// (image.imageOrientation = UIImageOrientationRight). Just rotate it to be face up.
 	if (image.imageOrientation != UIImageOrientationUp) {
@@ -113,6 +124,10 @@
 		image = UIGraphicsGetImageFromCurrentImageContext();
 		UIGraphicsEndImageContext();
 	}
+    
+    [LinphoneManager.instance lpConfigSetString:phAssetId forKey:@"avatar"];
+    _avatarImage.image = [LinphoneUtils selfAvatar];
+    [LinphoneManager.instance loadAvatar];
 
 	// Dismiss popover on iPad
 	if (IPAD) {
@@ -120,27 +135,10 @@
 	} else {
 		[PhoneMainView.instance.mainViewController hideSideMenu:NO];
 	}
+}
 
-	NSURL *url = [info valueForKey:UIImagePickerControllerReferenceURL];
-
-	// taken from camera, must be saved to device first
-	if (!url) {
-		[LinphoneManager.instance.photoLibrary
-			writeImageToSavedPhotosAlbum:image.CGImage
-							 orientation:(ALAssetOrientation)[image imageOrientation]
-						 completionBlock:^(NSURL *assetURL, NSError *error) {
-						   if (error) {
-							   LOGE(@"Cannot save image data downloaded [%@]", [error localizedDescription]);
-						   } else {
-							   LOGI(@"Image saved to [%@]", [assetURL absoluteString]);
-						   }
-						   [LinphoneManager.instance lpConfigSetString:assetURL.absoluteString forKey:@"avatar"];
-						   _avatarImage.image = [LinphoneUtils selfAvatar];
-						 }];
-	} else {
-		[LinphoneManager.instance lpConfigSetString:url.absoluteString forKey:@"avatar"];
-		_avatarImage.image = [LinphoneUtils selfAvatar];
-	}
+- (void)imagePickerDelegateVideo:(NSURL*)url info:(NSDictionary *)info {
+	return; // Avatar video not supported (yet ;) )
 }
 
 @end

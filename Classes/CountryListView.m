@@ -1,13 +1,23 @@
-//
-//  CountryListView.m
-//  Country List
-//
-//  Created by Pradyumna Doddala on 18/12/13.
-//  Copyright (c) 2013 Pradyumna Doddala. All rights reserved.
-//
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
+ *
+ * This file is part of linphone-iphone
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #import "CountryListView.h"
-
 #import "linphone/linphonecore_utils.h"
 
 @interface CountryListView ()
@@ -24,14 +34,16 @@ static NSMutableArray * dataRows = nil;
 + (NSArray*) getData {
 	if (!dataRows) {
 		dataRows = [[NSMutableArray alloc] init];
-
-		for (const LinphoneDialPlan* dial_plan=linphone_dial_plan_get_all(); dial_plan->country!=NULL; dial_plan++) {
+		const bctbx_list_t *dialPlans = linphone_dial_plan_get_all_list();
+		while (dialPlans) {
+			LinphoneDialPlan* dial_plan = (LinphoneDialPlan*)dialPlans->data;
 			[dataRows addObject:@{
-								  @"name":[NSString stringWithUTF8String:dial_plan->country],
-								  @"iso":[NSString stringWithUTF8String:dial_plan->iso_country_code],
-								  @"code":[NSString stringWithFormat:@"+%s",dial_plan->ccc],
-								  @"phone_length":@(dial_plan->nnl)
+								  @"name":[NSString stringWithUTF8String:linphone_dial_plan_get_country(dial_plan)],
+								  @"iso":[NSString stringWithUTF8String:linphone_dial_plan_get_iso_country_code(dial_plan)],
+								  @"code":[NSString stringWithFormat:@"+%s",linphone_dial_plan_get_country_calling_code(dial_plan)],
+								  @"phone_length":@(linphone_dial_plan_get_national_number_length(dial_plan))
 								  }];
+			dialPlans = dialPlans->next;
 		}
 	}
 	return dataRows;
@@ -63,9 +75,22 @@ static UICompositeViewDescription *compositeDescription = nil;
     [super viewDidLoad];
 
     _searchResults = [[NSArray alloc] init];
+	self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
+	self.searchController.searchResultsUpdater = self;
+	self.searchController.searchBar.delegate = self;
+	self.searchController.obscuresBackgroundDuringPresentation = false;
+	[self.searchController.searchBar sizeToFit];
+	self.tableView.tableHeaderView = self.searchController.searchBar;
     [_tableView reloadData];
 }
 
+- (void)viewWillDisappear:(BOOL)animated {
+  [super viewWillDisappear:animated];
+  if (self.searchController.active) {
+    self.searchController.active = NO;
+    [self.searchController.searchBar removeFromSuperview];
+  }
+}
 #pragma mark - UITableView Datasource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -73,13 +98,11 @@ static UICompositeViewDescription *compositeDescription = nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (tableView == self.searchDisplayController.searchResultsTableView){
+    if (self.searchController.active){
         return _searchResults.count;
     }else{
         return [self.class getData].count;
     }
-
-
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -89,7 +112,7 @@ static UICompositeViewDescription *compositeDescription = nil;
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cellIdentifier];
     }
 
-    if (tableView == self.searchDisplayController.searchResultsTableView) {
+    if (self.searchController.active) {
         cell.textLabel.text = [[_searchResults objectAtIndex:indexPath.row] valueForKey:@"name"];
         cell.detailTextLabel.text = [[_searchResults objectAtIndex:indexPath.row] valueForKey:@"code"];
     }else{
@@ -105,7 +128,7 @@ static UICompositeViewDescription *compositeDescription = nil;
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 	if ([_delegate respondsToSelector:@selector(didSelectCountry:)]) {
 		NSDictionary* dict = nil;
-		if (tableView == self.searchDisplayController.searchResultsTableView) {
+		if (self.searchController.active) {
 			dict = [_searchResults objectAtIndex:indexPath.row];
 		}else{
 			dict = [[self.class getData] objectAtIndex:indexPath.row];
@@ -114,6 +137,15 @@ static UICompositeViewDescription *compositeDescription = nil;
 		[self.delegate didSelectCountry:dict];
 	}
 	[PhoneMainView.instance popCurrentView];
+}
+
+#pragma mark - searchController delegate
+
+- (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
+	[self filterContentForSearchText:self.searchController.searchBar.text scope:@""];
+	dispatch_async(dispatch_get_main_queue(), ^{
+		[self.tableView reloadData];
+	});
 }
 
 #pragma mark - Filtering
@@ -125,11 +157,6 @@ static UICompositeViewDescription *compositeDescription = nil;
 
 - (IBAction)onCancelClick:(id)sender {
 	[PhoneMainView.instance popCurrentView];
-}
-
-- (BOOL)searchDisplayController:(UISearchDisplayController *)controller shouldReloadTableForSearchString:(NSString *)searchString{
-    [self filterContentForSearchText:searchString scope:[[self.searchDisplayController.searchBar scopeButtonTitles] objectAtIndex:[self.searchDisplayController.searchBar selectedScopeButtonIndex]]];
-        return YES;
 }
 
 + (NSDictionary *)countryWithIso:(NSString *)iso {

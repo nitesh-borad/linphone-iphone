@@ -1,25 +1,25 @@
-/* UIToggleVideoButton.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2011  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "UIVideoButton.h"
 #include "LinphoneManager.h"
-#import "Utils.h"
+#import "Log.h"
 
 @implementation UIVideoButton {
 	BOOL last_update_state;
@@ -42,13 +42,13 @@ INIT_WITH_COMMON_CF {
 
 	LinphoneCall *call = linphone_core_get_current_call(LC);
 	if (call) {
-		LinphoneCallAppData *callAppData = (__bridge LinphoneCallAppData *)linphone_call_get_user_pointer(call);
-		callAppData->videoRequested =
-			TRUE; /* will be used later to notify user if video was not activated because of the linphone core*/
+		CallAppData *data = [CallManager getAppDataWithCall:call];
+		data.videoRequested = TRUE;/* will be used later to notify user if video was not activated because of the linphone core*/
+		[CallManager setAppDataWithCall:call appData:data];
 		LinphoneCallParams *call_params = linphone_core_create_call_params(LC,call);
 		linphone_call_params_enable_video(call_params, TRUE);
-		linphone_core_update_call(LC, call, call_params);
-		linphone_call_params_destroy(call_params);
+		linphone_call_update(call, call_params);
+		linphone_call_params_unref(call_params);
 	} else {
 		LOGW(@"Cannot toggle video button, because no current call");
 	}
@@ -58,7 +58,7 @@ INIT_WITH_COMMON_CF {
 
 	if (!linphone_core_video_display_enabled(LC))
 		return;
-
+	[CallManager.instance setSpeakerEnabled:FALSE];
 	[self setEnabled:FALSE];
 	[waitView startAnimating];
 

@@ -10,13 +10,20 @@
 		<entry name="quality_reporting_interval" overwrite="true">180</entry>
 		<entry name="reg_expires" overwrite="true">31536000</entry>
 		<entry name="reg_identity" overwrite="true">sip:?@sip.linphone.org</entry>
+		<entry name="reg_proxy" overwrite="true">&lt;sip:sip.linphone.org;transport=tls&gt;</entry>
 		<entry name="reg_sendregister" overwrite="true">1</entry>
-		<entry name="refkey" overwrite="true">push_notification</entry>
 		<entry name="realm" overwrite="true">sip.linphone.org</entry>
+		<entry name="nat_policy_ref" overwrite="true">nat_policy_default_values</entry>
+	</section>
+
+	<section name="nat_policy_default_values">
+		<entry name="stun_server" overwrite="true">stun.linphone.org</entry>
+		<entry name="protocols" overwrite="true">stun,ice</entry>
 	</section>
 
 	<section name="sip">
 		<entry name="rls_uri" overwrite="true">sips:rls@sip.linphone.org</entry>
+		<entry name="auto_net_state_mon" overwrite="true">1</entry>
 	</section>
 	
 	<section name="assistant">
@@ -28,5 +35,8 @@
 		<entry name="username_min_length" overwrite="true">1</entry>
 		<entry name="username_regex" overwrite="true">^[a-z0-9+_.\-]*$</entry>
 		<entry name="xmlrpc_url" overwrite="true">https://subscribe.linphone.org:444/wizard.php</entry>
+	</section>
+	<section name="lime">
+		<entry name="lime_server_url" overwrite="true">https://lime.linphone.org/lime-server/lime-server.php</entry>
 	</section>
 </config>

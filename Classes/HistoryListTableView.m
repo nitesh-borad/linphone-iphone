@@ -1,20 +1,20 @@
-/* HistoryTableViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2009  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "HistoryListTableView.h"
@@ -59,6 +59,11 @@
 											 object:nil];
 
 	[NSNotificationCenter.defaultCenter addObserver:self
+										   selector:@selector(loadData)
+											   name:kLinphoneCallUpdate
+											 object:nil];
+
+	[NSNotificationCenter.defaultCenter addObserver:self
 										   selector:@selector(coreUpdateEvent:)
 											   name:kLinphoneCoreUpdate
 											 object:nil];
@@ -69,15 +74,25 @@
 	[super viewWillDisappear:animated];
 
 	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneAddressBookUpdate object:nil];
-
 	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneCoreUpdate object:nil];
+	[NSNotificationCenter.defaultCenter removeObserver:self name:kLinphoneCallUpdate object:nil];
 }
 
 #pragma mark - Event Functions
 
 - (void)coreUpdateEvent:(NSNotification *)notif {
-	// Invalid all pointers
-	[self loadData];
+	@try {
+		// Invalid all pointers
+		[self loadData];
+	}
+	@catch (NSException *exception) {
+		if ([exception.name isEqualToString:@"LinphoneCoreException"]) {
+			LOGE(@"Core already destroyed");
+			return;
+		}
+		LOGE(@"Uncaught exception : %@", exception.description);
+		abort();
+	}
 }
 
 #pragma mark - Property Functions
@@ -143,13 +158,74 @@
 	[self computeSections];
 
 	[super loadData];
-
+    
 	if (IPAD) {
 		if (![self selectFirstRow]) {
 			HistoryDetailsView *view = VIEW(HistoryDetailsView);
 			[view setCallLogId:nil];
 		}
 	}
+}
+
++ (void) saveDataToUserDefaults {
+	// As extensions is disabled by default, this function takes too much CPU.
+#if 0
+    const bctbx_list_t *logs = linphone_core_get_call_logs(LC);
+    NSUserDefaults *mySharedDefaults = [[NSUserDefaults alloc] initWithSuiteName: @"group.belledonne-communications.linphone.widget"];
+    NSMutableArray *logsShare = [NSMutableArray array];
+    NSMutableDictionary *tmpStoreDict = [NSMutableDictionary dictionary];
+    NSMutableArray *addedContacts = [NSMutableArray array];
+    while (logs) {
+        LinphoneCallLog *log = (LinphoneCallLog *)logs->data;
+        const LinphoneAddress *address = linphone_call_log_get_remote_address(log);
+        
+        // if contact is already to be display, skip
+        if ([addedContacts containsObject:[NSString stringWithUTF8String:linphone_address_as_string_uri_only(address)]]) {
+            logs = bctbx_list_next(logs);
+            continue;
+        }
+        // if null log id, skip
+        if (!linphone_call_log_get_call_id(log)) {
+            logs = bctbx_list_next(logs);
+            continue;
+        }
+        
+        NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+        
+        [dict setObject:[NSString stringWithUTF8String:linphone_call_log_get_call_id(log)]
+                 forKey:@"id"];
+        [dict setObject:[NSString stringWithUTF8String:linphone_address_get_display_name(address)?:(linphone_address_get_username(address)?:"unknown")]
+                 forKey:@"display"];
+        UIImage *avatar = [FastAddressBook imageForAddress:address];
+        if (avatar) {
+            UIImage *image = [UIImage resizeImage:avatar
+                                     withMaxWidth:200
+                                     andMaxHeight:200];
+            NSData *imageData = UIImageJPEGRepresentation(image, 1);
+            [dict setObject:imageData
+                     forKey:@"img"];
+        }
+        [tmpStoreDict setObject:dict
+                         forKey:[NSDate dateWithTimeIntervalSince1970:linphone_call_log_get_start_date(log)]];
+        [addedContacts addObject:[NSString stringWithUTF8String:linphone_address_as_string_uri_only(address)]];
+        
+        logs = bctbx_list_next(logs);
+    }
+    
+    NSArray *sortedDates = [[NSMutableArray alloc]
+                   initWithArray:[tmpStoreDict.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSDate *d1, NSDate *d2) {
+        return [d2 compare:d1];
+    }]];
+    
+    // sort logs array on date
+    for (NSDate *date in sortedDates) {
+        [logsShare addObject:[tmpStoreDict objectForKey:date]];
+        if (logsShare.count >= 4) //send no more data than needed
+            break;
+    }
+    
+    [mySharedDefaults setObject:logsShare forKey:@"logs"];
+#endif
 }
 
 - (void)computeSections {
@@ -172,7 +248,11 @@
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
 	CGRect frame = CGRectMake(0, 0, tableView.frame.size.width, 44);
 	UIView *tempView = [[UIView alloc] initWithFrame:frame];
-	tempView.backgroundColor = [UIColor whiteColor];
+	if (@available(iOS 13, *)) {
+		tempView.backgroundColor = [UIColor systemBackgroundColor];
+	} else {
+		tempView.backgroundColor = [UIColor whiteColor];
+	}
 
 	UILabel *tempLabel = [[UILabel alloc] initWithFrame:frame];
 	tempLabel.backgroundColor = [UIColor clearColor];
@@ -216,12 +296,12 @@
 	if (![self isEditing]) {
 		id log = [_sections objectForKey:_sortedDays[indexPath.section]][indexPath.row];
 		LinphoneCallLog *callLog = [log pointerValue];
-		if (callLog != NULL && linphone_call_log_get_call_id(callLog) != NULL) {
+		if (callLog != NULL) {
 			if (IPAD) {
 				UIHistoryCell *cell = (UIHistoryCell *)[self tableView:tableView cellForRowAtIndexPath:indexPath];
 				[cell onDetails:self];
 			} else {
-				LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
+				const LinphoneAddress *addr = linphone_call_log_get_remote_address(callLog);
 				[LinphoneManager.instance call:addr];
 			}
 		}

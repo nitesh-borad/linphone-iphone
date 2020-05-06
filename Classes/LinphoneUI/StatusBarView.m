@@ -1,20 +1,20 @@
-/* StatusBarViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "StatusBarView.h"
@@ -137,13 +137,14 @@
 		(linphone_content_get_buffer(content) == NULL)) {
 		return;
 	}
-	const char *body = linphone_content_get_buffer(content);
+	const uint8_t *bodyTmp = linphone_content_get_buffer(content);
+	const char *body = (const char *)bodyTmp;
 	if ((body = strstr(body, "voice-message: ")) == NULL) {
 		LOGW(@"Received new NOTIFY from voice mail but could not find 'voice-message' in BODY. Ignoring it.");
 		return;
 	}
 
-	sscanf(body, "voice-message: %d", &messagesUnreadCount);
+	sscanf((const char *)body, "voice-message: %d", &messagesUnreadCount);
 
 	LOGI(@"Received new NOTIFY from voice mail: there is/are now %d message(s) unread", messagesUnreadCount);
 
@@ -203,17 +204,17 @@
 
 		switch (state) {
 			case LinphoneRegistrationOk:
-				message = NSLocalizedString(@"Registered", nil);
+				message = NSLocalizedString(@"Connected", nil);
 				break;
 			case LinphoneRegistrationNone:
 			case LinphoneRegistrationCleared:
-				message = NSLocalizedString(@"Not registered", nil);
+				message = NSLocalizedString(@"Not connected", nil);
 				break;
 			case LinphoneRegistrationFailed:
-				message = NSLocalizedString(@"Registration failed", nil);
+				message = NSLocalizedString(@"Connection failed", nil);
 				break;
 			case LinphoneRegistrationProgress:
-				message = NSLocalizedString(@"Registration in progress", nil);
+				message = NSLocalizedString(@"Connection in progress", nil);
 				break;
 			default:
 				break;
@@ -295,7 +296,7 @@
 - (void)callQualityUpdate {
 	LinphoneCall *call = linphone_core_get_current_call(LC);
 	if (call != NULL) {
-		int quality = MIN(4, floor(linphone_call_get_average_quality(call)));
+		int quality = MIN(4, floor(linphone_call_get_current_quality(call)));
 		NSString *accessibilityValue = [NSString stringWithFormat:NSLocalizedString(@"Call quality: %d", nil), quality];
 		if (![accessibilityValue isEqualToString:_callQualityButton.accessibilityValue]) {
 			_callQualityButton.accessibilityValue = accessibilityValue;
@@ -329,13 +330,14 @@
 					myCode = [code substringFromIndex:2];
 				}
 				NSString *message =
-					[NSString stringWithFormat:NSLocalizedString(@"Confirm the following SAS with peer:\n"
-																 @"Say : %@\n"
-																 @"Your correspondant should say : %@",
+					[NSString stringWithFormat:NSLocalizedString(@"\nConfirmation security\n\n"
+                                                                 @"Say: %@\n"
+                                                                 @"Confirm that your interlocutor\n"
+																 @"says: %@",
 																 nil),
-											   myCode, correspondantCode];
-
-				if ([UIApplication sharedApplication].applicationState == UIApplicationStateBackground &&
+											   myCode.uppercaseString, correspondantCode.uppercaseString];
+                
+				if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive &&
 					floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_9_x_Max) {
 					UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
 					content.title = NSLocalizedString(@"ZRTP verification", nil);
@@ -360,7 +362,18 @@
 				} else {
 					if (securityDialog == nil) {
 						__block __strong StatusBarView *weakSelf = self;
-						securityDialog = [UIConfirmationDialog ShowWithMessage:message
+                        // define font of message
+                        NSMutableAttributedString *attrString = [[NSMutableAttributedString alloc] initWithString:message];
+                        NSUInteger length = [message length];
+                        UIFont *baseFont = [UIFont systemFontOfSize:21.0];
+                        [attrString addAttribute:NSFontAttributeName value:baseFont range:NSMakeRange(0, length)];
+                        UIFont *boldFont = [UIFont boldSystemFontOfSize:23.0];
+                        [attrString addAttribute:NSFontAttributeName value:boldFont range:[message rangeOfString:@"Confirmation security"]];
+                        UIColor *color = [UIColor colorWithRed:(150 / 255.0) green:(193 / 255.0) blue:(31 / 255.0) alpha:1.0];
+                        [attrString addAttribute:NSForegroundColorAttributeName value:color range:[message rangeOfString:myCode.uppercaseString]];
+                        [attrString addAttribute:NSForegroundColorAttributeName value:color range:[message rangeOfString:correspondantCode.uppercaseString]];
+                        
+						securityDialog = [UIConfirmationDialog ShowWithAttributedMessage:attrString
 							cancelMessage:NSLocalizedString(@"DENY", nil)
 							confirmMessage:NSLocalizedString(@"ACCEPT", nil)
 							onCancelClick:^() {
@@ -368,13 +381,18 @@
 								  linphone_call_set_authentication_token_verified(call, NO);
 							  }
 							  weakSelf->securityDialog = nil;
+                              [LinphoneManager.instance lpConfigSetString:[NSString stringWithUTF8String:linphone_call_get_remote_address_as_string(call)] forKey:@"sas_dialog_denied"];
 							}
 							onConfirmationClick:^() {
 							  if (linphone_core_get_current_call(LC) == call) {
 								  linphone_call_set_authentication_token_verified(call, YES);
 							  }
 							  weakSelf->securityDialog = nil;
-							}];
+                                [LinphoneManager.instance lpConfigSetString:nil forKey:@"sas_dialog_denied"];
+							} ];
+                        
+                        securityDialog.securityImage.hidden = FALSE;
+						[securityDialog setSpecialColor];
 					}
 				}
 			}

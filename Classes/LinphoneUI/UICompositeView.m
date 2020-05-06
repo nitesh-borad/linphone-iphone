@@ -1,21 +1,21 @@
-/* UICompositeView.m
-*
-* Copyright (C) 2012  Belledonne Comunications, Grenoble, France
-*
-*  This program is free software; you can redistribute it and/or modify
-*  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation; either version 2 of the License, or
-*  (at your option) any later version.
-*
-*  This program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-*  GNU Library General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with this program; if not, write to the Free Software
-*  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
-*/
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
+ *
+ * This file is part of linphone-iphone
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #import "UICompositeView.h"
 
@@ -149,6 +149,11 @@
 	 the device screen size at load */
 	[self updateViewsFramesAccordingToLaunchOrientation];
 	[super viewDidLoad];
+	NSArray * arr =[[NSBundle mainBundle] loadNibNamed:@"LaunchScreen" owner:nil options:nil];
+	LaunchScreen * customView = [arr firstObject];
+	customView.frame = self.view.frame;
+	customView.tag = 999;
+	[self.view addSubview:customView];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -387,8 +392,6 @@
 	return UIInterfaceOrientationPortrait;
 }
 
-#define IPHONE_STATUSBAR_HEIGHT 20
-
 - (void)update:(UICompositeViewDescription *)description
 		tabBar:(NSNumber *)tabBar
 	 statusBar:(NSNumber *)statusBar
@@ -570,7 +573,8 @@
 
 	// Compute frame for each elements
 	CGRect viewFrame = self.view.frame;
-	int origin = currentViewDescription.fullscreen ? 0 : IPHONE_STATUSBAR_HEIGHT;
+	int origin = currentViewDescription.fullscreen ? 0 : [PhoneMainView iphoneStatusBarHeight];
+	
 
 	// 1. status bar - fixed size on top
 	CGRect statusBarFrame = self.statusBarView.frame;
@@ -679,6 +683,8 @@
 		[_sideMenuViewController viewDidDisappear:YES];
 	}
 	// Dealloc old view description
+	UIView *viewToRemove = [self.view viewWithTag:999];
+	[viewToRemove removeFromSuperview];
 }
 
 - (void)changeView:(UICompositeViewDescription *)description {

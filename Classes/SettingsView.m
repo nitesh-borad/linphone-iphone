@@ -1,20 +1,20 @@
-/* SettingsViewController.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "SettingsView.h"
@@ -35,8 +35,8 @@
 #ifdef DEBUG
 @interface UIDevice (debug)
 
-- (void)_setBatteryLevel:(float)level;
-- (void)_setBatteryState:(int)state;
+- (void)setBatteryLevel:(float)level;
+- (void)setBatteryState:(int)state;
 
 @end
 #endif
@@ -270,7 +270,7 @@ INIT_WITH_COMMON_CF {
 
 - (id)initWithRootViewController:(UIViewController *)rootViewController {
 	[UINavigationControllerEx removeBackground:rootViewController.view];
-	return [self initWithRootViewController:rootViewController];
+	return [super initWithRootViewController:rootViewController];
 }
 
 + (void)removeBackground:(UIView *)view {
@@ -392,10 +392,11 @@ static UICompositeViewDescription *compositeDescription = nil;
 #pragma mark - Account Creator callbacks
 
 void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStatus status, const char *resp) {
-	SettingsView *thiz = (__bridge SettingsView *)(linphone_account_creator_get_user_data(creator));
-	
+	SettingsView *thiz = (__bridge SettingsView *)(linphone_account_creator_cbs_get_user_data(
+		linphone_account_creator_get_callbacks(creator)));
+
 	switch (status) {
-		case LinphoneAccountCreatorOK:
+		case LinphoneAccountCreatorStatusRequestOk:
 			[thiz updatePassword:creator];
 			break;
 		default:
@@ -408,10 +409,10 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 	_tmpPwd = NULL;
 	NSString* err;
 	switch (status) {
-		case LinphoneAccountCreatorAccountNotExist:
+		case LinphoneAccountCreatorStatusAccountNotExist:
 			err = NSLocalizedString(@"Bad credentials, check your account settings", nil);
 			break;
-		case LinphoneAccountCreatorErrorServer:
+		case LinphoneAccountCreatorStatusServerError:
 			err = NSLocalizedString(@"Server error, please try again later.", nil);
 			break;
 		default:
@@ -505,12 +506,13 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 		removeFromHiddenKeys = [video_preset isEqualToString:@"custom"];
 		[keys addObject:@"video_preferred_fps_preference"];
 		[keys addObject:@"download_bandwidth_preference"];
-	} else if ([notif.object isEqualToString:@"show_msg_in_notif"]) {
-		// we have to register again to the iOS notification, because we change the actions associated with IM_MSG
-		UIApplication *app = [UIApplication sharedApplication];
-		LinphoneAppDelegate *delegate = (LinphoneAppDelegate *)app.delegate;
-		[delegate registerForNotifications:app];
-	}
+    } else if ([@"auto_download_mode" compare:notif.object] == NSOrderedSame) {
+        NSString *download_mode = [notif.userInfo objectForKey:@"auto_download_mode"];
+        removeFromHiddenKeys = [download_mode isEqualToString:@"Customize"];
+        if (removeFromHiddenKeys)
+            [LinphoneManager.instance lpConfigSetInt:10000000 forKey:@"auto_download_incoming_files_max_size"];
+        [keys addObject:@"auto_download_incoming_files_max_size"];
+    }
 
 	for (NSString *key in keys) {
 		if (removeFromHiddenKeys)
@@ -592,10 +594,6 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 
 	if (!linphone_core_sip_transport_supported(LC, LinphoneTransportTls)) {
 		[hiddenKeys addObject:@"media_encryption_preference"];
-	}
-
-	if (!linphone_core_lime_available(LC)) {
-		[hiddenKeys addObject:@"use_lime_preference"];
 	}
 
 #ifndef DEBUG
@@ -705,6 +703,14 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 	if ([[UIDevice currentDevice].systemVersion floatValue] < 8) {
 		[hiddenKeys addObject:@"repeat_call_notification_preference"];
 	}
+	
+	if (![lm lpConfigBoolForKey:@"accept_early_media" inSection:@"app"]) {
+		[hiddenKeys addObject:@"pref_accept_early_media_preference"];
+	}
+
+    if (![[lm lpConfigStringForKey:@"auto_download_mode"] isEqualToString:@"Customize"]) {
+        [hiddenKeys addObject:@"auto_download_incoming_files_max_size"];
+    }
 
 	return hiddenKeys;
 }
@@ -726,7 +732,7 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 }
 
 - (void)settingsViewControllerWillAppear:(IASKAppSettingsViewController *)sender {
-	_backButton.hidden = (sender.file == nil || [sender.file isEqualToString:@"Root"]);
+	isRoot = (sender.file == nil || [sender.file isEqualToString:@"Root"]);
 	_titleLabel.text = sender.title;
 
 	// going to account: fill account specific info
@@ -753,19 +759,23 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 		[PhoneMainView.instance.mainViewController
 			clearCache:[NSArray arrayWithObject:[PhoneMainView.instance currentView]]];
 	} else if ([key isEqual:@"battery_alert_button"]) {
-		[[UIDevice currentDevice] _setBatteryState:UIDeviceBatteryStateUnplugged];
-		[[UIDevice currentDevice] _setBatteryLevel:0.01f];
+		[[UIDevice currentDevice] setBatteryState:UIDeviceBatteryStateUnplugged];
+		[[UIDevice currentDevice] setBatteryLevel:0.01f];
 		[NSNotificationCenter.defaultCenter postNotificationName:UIDeviceBatteryLevelDidChangeNotification object:self];
 	} else if ([key isEqual:@"flush_images_button"]) {
 		const MSList *rooms = linphone_core_get_chat_rooms(LC);
 		while (rooms) {
-			const MSList *messages = linphone_chat_room_get_history(rooms->data, 0);
-			while (messages) {
-				LinphoneChatMessage *msg = messages->data;
+			const MSList *events = linphone_chat_room_get_history_message_events(rooms->data, 0);
+			while (events) {
+				LinphoneEventLog *event = events->data;
+				LinphoneChatMessage *msg = linphone_event_log_get_chat_message(event);
 				if (!linphone_chat_message_is_outgoing(msg)) {
-					[LinphoneManager setValueInMessageAppData:nil forKey:@"localimage" inMessage:messages->data];
+					[LinphoneManager setValueInMessageAppData:nil forKey:@"localimage" inMessage:msg];
+					[LinphoneManager setValueInMessageAppData:nil forKey:@"uploadQuality" inMessage:msg];
+                    [LinphoneManager setValueInMessageAppData:nil forKey:@"localvideo" inMessage:msg];
+                    [LinphoneManager setValueInMessageAppData:nil forKey:@"localfile" inMessage:msg];
 				}
-				messages = messages->next;
+				events = events->next;
 			}
 			rooms = rooms->next;
 		}
@@ -872,6 +882,7 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 																								completion:nil];
 																			   return;
 																		   }
+																		   linphone_account_creator_set_algorithm(account_creator, "");
 																		   linphone_account_creator_set_username(account_creator, linphone_auth_info_get_username(ai));
 																		   if (linphone_auth_info_get_passwd(ai) && !(strcmp(linphone_auth_info_get_passwd(ai),"") == 0)) {
 																			   linphone_account_creator_set_password(account_creator, linphone_auth_info_get_passwd(ai));
@@ -880,9 +891,18 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 																		   }
 																		   
 																		   linphone_account_creator_set_domain(account_creator, linphone_auth_info_get_domain(ai));
-																		   linphone_account_creator_set_user_data(account_creator, (__bridge void *)(self));
-																		   linphone_account_creator_cbs_set_update_hash(linphone_account_creator_get_callbacks(account_creator), update_hash_cbs);
-																		   linphone_account_creator_update_password(account_creator, pwd.UTF8String);
+																		   linphone_account_creator_set_user_data(
+																			   account_creator, (void *)pwd.UTF8String);
+																		   linphone_account_creator_cbs_set_update_account(
+																			   linphone_account_creator_get_callbacks(
+																				   account_creator),
+																			   update_hash_cbs);
+																		   linphone_account_creator_cbs_set_user_data(
+																			   linphone_account_creator_get_callbacks(
+																				   account_creator),
+																			   (__bridge void *)(self));
+																		   linphone_account_creator_update_account(
+																			   account_creator);
 																	   } else {
 																		   UIAlertController *errView = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Error while changing your password", nil)
 																																			message:NSLocalizedString(@"Your confirmation password doesn't match your password", nil)
@@ -978,11 +998,11 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 	if ([LinphoneManager.instance lpConfigBoolForKey:@"send_logs_include_linphonerc_and_chathistory"]) {
 		// retrieve linphone rc
 		[attachments
-			addObject:@[ [LinphoneManager documentFile:@"linphonerc"], @"text/plain", @"linphone-configuration.rc" ]];
+			addObject:@[ [LinphoneManager preferenceFile:@"linphonerc"], @"text/plain", @"linphone-configuration.rc" ]];
 
 		// retrieve historydb
 		[attachments addObject:@[
-			[LinphoneManager documentFile:@"linphone_chats.db"],
+			[LinphoneManager dataFile:@"linphone_chats.db"],
 			@"application/x-sqlite3",
 			@"linphone-chats-history.db"
 		]];
@@ -1070,6 +1090,11 @@ void update_hash_cbs(LinphoneAccountCreator *creator, LinphoneAccountCreatorStat
 }
 
 - (IBAction)onBackClick:(id)sender {
-	[_settingsController.navigationController popViewControllerAnimated:YES];
+	if  (isRoot) {
+		[_settingsController.navigationController popViewControllerAnimated:NO];
+		[PhoneMainView.instance popCurrentView];
+	} else {
+		[_settingsController.navigationController popViewControllerAnimated:YES];
+	}
 }
 @end

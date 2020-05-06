@@ -1,20 +1,20 @@
-/* AssistantViewController.h
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone 
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import <UIKit/UIKit.h>
@@ -42,6 +42,7 @@
 @property(nonatomic, strong) IBOutlet UIView *waitView;
 @property(nonatomic, strong) IBOutlet UIButton *backButton;
 @property (weak, nonatomic) IBOutlet UIButton *infoLoginButton;
+@property (weak, nonatomic) IBOutlet UIRoundBorderedButton *linphoneLoginButton;
 
 @property(nonatomic, strong) IBOutlet UIView *welcomeView;
 @property(nonatomic, strong) IBOutlet UIView *createAccountView;
@@ -51,6 +52,7 @@
 @property(nonatomic, strong) IBOutlet UIView *remoteProvisioningLoginView;
 @property(strong, nonatomic) IBOutlet UIView *remoteProvisioningView;
 @property (strong, nonatomic) IBOutlet UIView *createAccountActivateSMSView;
+@property (strong, nonatomic) IBOutlet UIView *qrCodeView;
 
 @property(nonatomic, strong) IBOutlet UIImageView *welcomeLogoImage;
 @property(nonatomic, strong) IBOutlet UIButton *gotoCreateAccountButton;
@@ -64,16 +66,24 @@
 @property (weak, nonatomic) IBOutlet UILabel *activationSMSText;
 
 @property (weak, nonatomic) IBOutlet UILabel *accountLabel;
+@property (weak, nonatomic) IBOutlet UIButton *qrCodeButton;
+@property (weak, nonatomic) IBOutlet UIButton *downloadButton;
+@property (weak, nonatomic) IBOutlet UITextField *urlLabel;
 @property (weak, nonatomic) IBOutlet NSLayoutConstraint *createAccountNextButtonPositionConstraint;
 
-+ (NSString *)errorForStatus:(LinphoneAccountCreatorStatus)status;
 + (NSString *)StringForXMLRPCError:(const char *)err;
++ (NSString *)errorForLinphoneAccountCreatorPhoneNumberStatus:(LinphoneAccountCreatorPhoneNumberStatus)status;
++ (NSString *)errorForLinphoneAccountCreatorUsernameStatus:(LinphoneAccountCreatorUsernameStatus)status;
++ (NSString *)errorForLinphoneAccountCreatorEmailStatus:(LinphoneAccountCreatorEmailStatus)status;
++ (NSString *)errorForLinphoneAccountCreatorPasswordStatus:(LinphoneAccountCreatorPasswordStatus)status;
++ (NSString *)errorForLinphoneAccountCreatorActivationCodeStatus:(LinphoneAccountCreatorActivationCodeStatus)status;
++ (NSString *)errorForLinphoneAccountCreatorStatus:(LinphoneAccountCreatorStatus)status;
++ (NSString *)errorForLinphoneAccountCreatorDomainStatus:(LinphoneAccountCreatorDomainStatus)status;
 
 - (void)reset;
 - (void)fillDefaultValues;
 
 - (IBAction)onBackClick:(id)sender;
-- (IBAction)onDialerClick:(id)sender;
 
 - (IBAction)onGotoCreateAccountClick:(id)sender;
 - (IBAction)onGotoLinphoneLoginClick:(id)sender;
@@ -86,6 +96,7 @@
 - (IBAction)onLoginClick:(id)sender;
 - (IBAction)onRemoteProvisioningLoginClick:(id)sender;
 - (IBAction)onRemoteProvisioningDownloadClick:(id)sender;
+- (IBAction)onLaunchQRCodeView:(id)sender;
 - (IBAction)onCreateAccountCheckActivatedClick:(id)sender;
 - (IBAction)onLinkAccountClick:(id)sender;
 

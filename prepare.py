@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 
-############################################################################
-# prepare.py
-# Copyright (C) 2015  Belledonne Communications, Grenoble France
 #
-############################################################################
+# Copyright (c) 2010-2019 Belledonne Communications SARL.
 #
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
+# This file is part of linphone-iphone 
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -17,10 +16,8 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-############################################################################
 
 import os
 import re
@@ -49,7 +46,11 @@ class IOSTarget(prepare.Target):
         self.config_file = 'configs/config-ios-' + arch + '.cmake'
         self.toolchain_file = 'toolchains/toolchain-ios-' + arch + '.cmake'
         self.output = 'liblinphone-sdk/' + arch + '-apple-darwin.ios'
-	self.external_source_path = os.path.join(current_path, 'submodules')
+        self.external_source_path = os.path.join(current_path, 'submodules')
+        external_builders_path = os.path.join(current_path, 'cmake_builder')
+        self.additional_args = [
+            "-DLINPHONE_BUILDER_EXTERNAL_BUILDERS_PATH=" + external_builders_path
+        ]
 
 
 class IOSi386Target(IOSTarget):
@@ -152,8 +153,7 @@ class IOSPreparator(prepare.Preparator):
         return self.extract_from_xcode_project_with_regex(regex)[0]
 
     def extract_libs_list(self):
-        # name = libspeexdsp.a; path = "liblinphone-sdk/apple-darwin/lib/libspeexdsp.a"; sourceTree = "<group>"; };
-        regex = re.compile("name = \"*(lib\S+)\.a(\")*; path = \"liblinphone-sdk/apple-darwin/")
+        regex = re.compile("name = ([A-Za-z0-9\-_]+)\.framework; path = \"liblinphone-sdk/apple-darwin/Frameworks/")
         return self.extract_from_xcode_project_with_regex(regex)
 
     def detect_package_manager(self):
@@ -247,13 +247,13 @@ class IOSPreparator(prepare.Preparator):
 """.format(arch=arch, generator=generator, project_file=project_file)
         multiarch = ""
         for arch in platforms[1:]:
-            multiarch += \
-                """\tif test -f "$${arch}_path"; then \\
-\t\tall_paths=`echo $$all_paths $${arch}_path`; \\
-\t\tall_archs="$$all_archs,{arch}" ; \\
-\telse \\
-\t\techo "WARNING: archive `basename $$archive` exists in {first_arch} tree but does not exists in {arch} tree: $${arch}_path."; \\
-\tfi; \\
+            multiarch += """ \\
+\t\t\tif test -f "$${arch}_path/$$framework_name"; then \\
+\t\t\t\tall_paths=`echo $$all_paths $${arch}_path/$$framework_name`; \\
+\t\t\t\tall_archs="$$all_archs,{arch}" ; \\
+\t\t\telse \\
+\t\t\t\techo "WARNING: archive `basename $$archive` exists in {first_arch} tree but does not exists in {arch} tree: $${arch}_path."; \\
+\t\t\tfi; \\
 """.format(first_arch=platforms[0], arch=arch)
         makefile = """
 archs={archs}
@@ -264,11 +264,13 @@ LINPHONE_IPHONE_VERSION=$(shell git describe --always)
 all: build
 
 sdk:
-\tarchives=`find liblinphone-sdk/{first_arch}-apple-darwin.ios -name '*.a'` && \\
+\tarchives=`find liblinphone-sdk/{first_arch}-apple-darwin.ios -name '*.framework'` && \\
 \trm -rf liblinphone-sdk/apple-darwin && \\
 \tmkdir -p liblinphone-sdk/apple-darwin && \\
-\tcp -rf liblinphone-sdk/{first_arch}-apple-darwin.ios/include liblinphone-sdk/apple-darwin/. && \\
 \tcp -rf liblinphone-sdk/{first_arch}-apple-darwin.ios/share liblinphone-sdk/apple-darwin/. && \\
+\tcp -rf liblinphone-sdk/{first_arch}-apple-darwin.ios/lib liblinphone-sdk/apple-darwin/. && \\
+\tcp -rf liblinphone-sdk/{first_arch}-apple-darwin.ios/include liblinphone-sdk/apple-darwin/. && \\
+\tcp -rf liblinphone-sdk/{first_arch}-apple-darwin.ios/Frameworks liblinphone-sdk/apple-darwin/. && \\
 \tfor archive in $$archives ; do \\
 \t\tarmv7_path=`echo $$archive | sed -e "s/{first_arch}/armv7/"`; \\
 \t\tarm64_path=`echo $$archive | sed -e "s/{first_arch}/arm64/"`; \\
@@ -277,24 +279,33 @@ sdk:
 \t\tdestpath=`echo $$archive | sed -e "s/-debug//" | sed -e "s/{first_arch}-//" | sed -e "s/\.ios//"`; \\
 \t\tall_paths=`echo $$archive`; \\
 \t\tall_archs="{first_arch}"; \\
+\t\tarchive_name=`basename $$archive`; \\
+\t\tframework_name=`echo $$archive_name | cut -d '.' -f 1`; \\
+\t\tall_paths=`echo $$all_paths/$$framework_name`; \\
 \t\tmkdir -p `dirname $$destpath`; \\
-\t\t{multiarch} \\
+{multiarch} \\
 \t\techo "[{archs}] Mixing `basename $$archive` in $$destpath"; \\
-\t\tlipo -create $$all_paths -output $$destpath; \\
+\t\tlipo -create -output $$destpath/$$framework_name $$all_paths;  \\
 \tdone; \\
 \tif test -s WORK/ios-{first_arch}/Build/dummy_libraries/dummy_libraries.txt; then \\
 \t\techo 'NOTE: the following libraries were STUBBED:'; \\
 \t\tcat WORK/ios-{first_arch}/Build/dummy_libraries/dummy_libraries.txt; \\
-\tfi
+\tfi; \\
 
 build: $(addsuffix -build, $(archs))
 \t$(MAKE) sdk
 
 ipa: build
-\txcodebuild -configuration Release \\
-\t&& xcrun -sdk iphoneos PackageApplication -v build/Release-iphoneos/linphone.app -o $$PWD/linphone-iphone.ipa
+\txcodebuild -configuration Release && \\
+\txcodebuild -sdk iphoneos -project linphone.xcodeproj -scheme linphone -configuration Release build \\
+\t-archivePath linphone-iphone-'$(LINPHONE_IPHONE_VERSION)'.xcarchive archive && \\
+\txcodebuild -exportArchive -archivePath linphone-iphone-'$(LINPHONE_IPHONE_VERSION)'.xcarchive \\
+\t-exportPath linphone-iphone-'$(LINPHONE_IPHONE_VERSION)'.ipa -exportOptionsPlist Tools/exportOptions.plist
 
 zipsdk: sdk
+\trm -rf liblinphone-sdk/apple-darwin/Tools &&\\
+\tmkdir -p liblinphone-sdk/apple-darwin/Tools &&\\
+\tcp -f Tools/deploy.sh liblinphone-sdk/apple-darwin/Tools/.; \\
 \techo "Generating SDK zip file for version $(LINPHONE_IPHONE_VERSION)"
 \tzip -r liblinphone-iphone-sdk-$(LINPHONE_IPHONE_VERSION).zip \\
 \tliblinphone-sdk/apple-darwin \\
@@ -302,6 +313,9 @@ zipsdk: sdk
 \t-x liblinphone-tutorials/hello-world/build\* \\
 \t-x liblinphone-tutorials/hello-world/hello-world.xcodeproj/*.pbxuser \\
 \t-x liblinphone-tutorials/hello-world/hello-world.xcodeproj/*.mode1v3
+
+podspec: zipsdk
+\tsed "s/FRAMEWORK_VERSION/$(LINPHONE_IPHONE_VERSION)/g" Tools/liblinphone.podspec > liblinphone.podspec
 
 pull-transifex:
 \ttx pull -af
@@ -348,7 +362,6 @@ def main():
     if preparator.check_environment() != 0:
         preparator.show_environment_errors()
         return 1
-    preparator.install_git_hook()
     return preparator.run()
 
 if __name__ == "__main__":

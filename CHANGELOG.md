@@ -10,6 +10,113 @@ Group changes to describe their impact on the project, as follows:
     Fixed for any bug fixes.
     Security to invite users to upgrade in case of vulnerabilities.
 
+
+## [Unreleased]
+
+### Added
+- Possiblity to enable Media Encryption Mandatory  in Settings.
+- Possiblity to not show app's calls in iphone's history
+- Using new AAudio & Camera2 frameworks for better performances (if available)
+
+### Changed
+- Improved performances to reduce startup time.
+- Added our own devices in LIME encrypted chatrooms' security view.
+- License changed from GPLv2 to GPLv3.
+- Switched from MD5 to SHA-256 as password protection algorithm.
+- Updated translations, mainly French and English.
+- Disable bitcode by Xcode.
+- Modify some views for iphone, XR and Xs.
+
+### Fixed
+- Automatically downloaded images are copied when shared in a chat room.
+    
+## [4.1.0] - 2019-05-06
+
+### Added
+- End-to-end encryption for instant messaging, for both one-to-one and group conversations.
+- Video H.265 codec support, based on iOS VideoToolbox framework.
+- Enhanced call and IM notifications, so that it is possible to answer, decline, reply or mark as read directly from them.
+- Setting to request attachments to be automatically downloaded, unconditionnally or based on their size.
+- Possibility to send multiple attachments (images, documents) in a same message.
+- Possibility to open all kinds of documents received in a conversation.
+- Possibility to share an image through Linphone from an external application (ex: photo app)
+- Button to invite contacts to use Linphone by sending them a SMS.
+- Possibility to record calls (audio only), and replay them from the "Recordings" menu.
+- Remote provisioning from a QR code providing the http(s) url of a provisioning server.
+- Optional Crashlythics support.
+
+### Changed
+- Compilation procedure is simplified: a binary SDK containing dependencies (liblinphone) is retrieved automatically from a CocoaPods repository.
+  Full compilation remains absolutely supported. Please check local README.md for more details.
+- Updated translations, mainly French and English.
+- Use of Photokit instead of Asset Library for image handling.
+- Auto-layout of images in chat messages.
+- Use Xcode test navigator for tests.
+- Move important files from `Documents` folder to `Application Library`. 
+
+### Fixed
+- Issues around Bluetooth devices management.
+- Loss of audio after accepting a second call while already in a call.
+- Crashes when during calls.
+- Nowebcam when leaving conference.
+
+### Removed
+- Static build of iOS linphone SDK.
+- All git submodules previously containing dependencies.
+- Some resource files now provided by linphone-sdk.
+
+## [4.0.2] - 2018-10-15
+
+### Fixed
+- fix IOS12 crash
+- fix bluethooth issue with some cars
+- fix nat helper (sdk)
+
+## [4.0.1] - 2018-06-26
+
+### Fixed
+- Fix TURN
+- Start video stream on first call
+- Fix audio unit management in case of call time out
+- Fix registration issue with some SIP services (ie: Asterix)
+
+## [4.0] - 2018-06-11
+
+### Added
+- Supports of group chat
+- New address search algorithm
+
+### Fixed
+- Minor bugs fixes
+
+## [3.16.5] - 2017-11-28
+
+### Added
+- Support of IOS 11
+- new algorithm to adapt audio and video codec bitrates to the available bandwidth (https://wiki.linphone.org/xwiki/wiki/public/view/FAQ/How%20does%20adaptive%20bitrate%20algorithm%20work%20%3F/)
+
+### Changed
+- Contact, CNContact implmentation.
+- Contacts loading optimization.
+- Sound management updated
+
+### Fixed
+- Chat file resend fixed
+- Minor bugs fixes
+- Audio fixed on conference call
+
+## [3.16.3] - 2017-05-03
+
+### Added
+- Imdm, chat message reception/lecture notification.
+
+### Changed
+- Optimization of Chat list
+
+### Fixed
+- Minor bugs fixes
+- Crashes on Call cancel too soon
+
 ## [3.16.2] - 2017-03-01
 
 ### Added

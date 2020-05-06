@@ -1,20 +1,20 @@
-/* UIContactCell.m
+/*
+ * Copyright (c) 2010-2019 Belledonne Communications SARL.
  *
- * Copyright (C) 2012  Belledonne Comunications, Grenoble, France
+ * This file is part of linphone-iphone
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU Library General Public License for more details.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #import "UIContactCell.h"
@@ -63,8 +63,8 @@
 
 - (void)onPresenceChanged:(NSNotification *)k {
 	LinphoneFriend *f = [[k.userInfo valueForKey:@"friend"] pointerValue];
-	// only consider event if it's about us
-	if (_contact && _nameLabel.text == PhoneMainView.instance.currentName) {
+	// only consider event if it's about us when not in ContactsListView
+	if (_contact && (PhoneMainView.instance.currentView == ContactsListView.compositeViewDescription || _nameLabel.text == PhoneMainView.instance.currentName)) {
 		if (!_contact.friend || f != _contact.friend) {
 			return;
 		}
